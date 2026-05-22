@@ -1,6 +1,11 @@
 # frozen_string_literal: true
 
-require 'voxpupuli/test/rake'
+# load optional tasks for tests
+# only available if gem group test is installed
+begin
+  require 'voxpupuli/test/rake'
+rescue LoadError
+end
 
 # load optional tasks for releases
 # only available if gem group releases is installed
