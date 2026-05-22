@@ -6,18 +6,37 @@
   "license": "Apache-2.0",
   "source": "https://github.com/Kotty666/Kotty666-podman_compose",
   "project_page": "https://github.com/Kotty666/Kotty666-podman_compose",
+  "dependencies": [
+    {
+      "name": "puppetlabs/stdlib",
+      "version_requirement": ">= 8.0.0 < 10.0.0"
+    }
+  ],
+  "data_provider": "hiera",
   "operatingsystem_support": [
     {
       "operatingsystem": "Debian",
-      "operatingsystemrelease": ["11", "12", "13"]
+      "operatingsystemrelease": [
+        "11",
+        "12",
+        "13"
+      ]
     },
     {
       "operatingsystem": "Ubuntu",
-      "operatingsystemrelease": ["22.04", "24.04", "26.04"]
+      "operatingsystemrelease": [
+        "22.04",
+        "24.04",
+        "26.04"
+      ]
     },
     {
       "operatingsystem": "RedHat",
-      "operatingsystemrelease": ["8", "9", "10"]
+      "operatingsystemrelease": [
+        "8",
+        "9",
+        "10"
+      ]
     }
   ],
   "requirements": [
@@ -26,12 +45,14 @@
       "version_requirement": ">= 7.0.0 < 9.0.0"
     }
   ],
-  "dependencies": [
-    {
-      "name": "puppetlabs/stdlib",
-      "version_requirement": ">= 8.0.0 < 10.0.0"
-    }
+  "tags": [
+    "podman",
+    "compose",
+    "container",
+    "systemd",
+    "rootless"
   ],
-  "data_provider": "hiera",
-  "tags": ["podman", "compose", "container", "systemd", "rootless"]
+  "pdk-version": "3.4.0",
+  "template-url": "https://github.com/puppetlabs/pdk-templates.git#main",
+  "template-ref": "heads/main-0-ga181866"
 }
