@@ -1,0 +1,17 @@
+---
+name: Release
+
+on:
+  push:
+    tags:
+      - '*'
+
+jobs:
+  release:
+    name: Release
+    uses: voxpupuli/gha-puppet/.github/workflows/release.yml@v4
+    with:
+      allowed_owner: 'Kotty666'
+    secrets:
+      username: ${{ secrets.PUPPET_FORGE_USERNAME }}
+      api_key: ${{ secrets.PUPPET_FORGE_API_KEY }}

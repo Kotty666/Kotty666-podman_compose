@@ -1,0 +1,35 @@
+<%- |
+  String           $project_name,
+  String           $service_name,
+  String           $on_calendar,
+  Optional[String] $on_boot_sec,
+  Boolean          $persistent,
+  Optional[String] $randomized_delay_sec,
+  Optional[String] $accuracy_sec,
+| -%>
+# Managed by Puppet - DO NOT EDIT
+# podman-compose timer: <%= $project_name %>
+
+[Unit]
+Description=Timer for Podman Compose Job - <%= $project_name %>
+
+[Timer]
+<% if $on_calendar { -%>
+OnCalendar=<%= $on_calendar %>
+<% } -%>
+<% if $on_boot_sec { -%>
+OnBootSec=<%= $on_boot_sec %>
+<% } -%>
+<% if $persistent { -%>
+Persistent=true
+<% } -%>
+<% if $randomized_delay_sec { -%>
+RandomizedDelaySec=<%= $randomized_delay_sec %>
+<% } -%>
+<% if $accuracy_sec { -%>
+AccuracySec=<%= $accuracy_sec %>
+<% } -%>
+Unit=<%= $service_name %>.service
+
+[Install]
+WantedBy=timers.target

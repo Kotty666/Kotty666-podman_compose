@@ -1,0 +1,61 @@
+<%- |
+  Stdlib::Absolutepath $compose_binary,
+  String               $compose_file_name,
+| -%>
+#!/bin/bash
+# Managed by Puppet — DO NOT EDIT
+#
+# Compares the running image digest of each compose service against the
+# desired image (after a quiet `pull`).
+#
+# Usage:
+#   .puppet-verify-images.sh check    # exit 0 = in sync, 1 = drift
+#   .puppet-verify-images.sh update   # bring services in sync via `up -d`
+#
+# `check` is wired up as the `unless` of a Puppet exec, `update` as its
+# `command` — so Puppet only reports a change when drift is actually fixed.
+
+set -uo pipefail
+
+ACTION="${1:-check}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR"
+
+COMPOSE_BIN="<%= $compose_binary %>"
+COMPOSE_FILE="<%= $compose_file_name %>"
+IMAGES_FILE="$SCRIPT_DIR/.puppet-images.txt"
+
+[ -f "$IMAGES_FILE" ] || exit 0
+
+# Refresh local images so digests reflect what the registry currently serves.
+# Failures (offline, auth, …) must not break the run — drift will still be
+# reported correctly based on whatever is locally available.
+"$COMPOSE_BIN" -f "$COMPOSE_FILE" pull --quiet >/dev/null 2>&1 || true
+
+drift=0
+while IFS=$'\t' read -r svc image; do
+  [ -z "${svc:-}" ] && continue
+  [ -z "${image:-}" ] && continue
+
+  cid=$("$COMPOSE_BIN" -f "$COMPOSE_FILE" ps -q "$svc" 2>/dev/null | head -n1 || true)
+  if [ -z "$cid" ]; then
+    drift=1
+    continue
+  fi
+
+  running=$(podman inspect --format '{{.Image}}' "$cid" 2>/dev/null || true)
+  desired=$(podman image inspect "$image" --format '{{.Id}}' 2>/dev/null || true)
+
+  if [ -z "$desired" ] || [ -z "$running" ] || [ "$running" != "$desired" ]; then
+    drift=1
+  fi
+done < "$IMAGES_FILE"
+
+if [ "$ACTION" = "check" ]; then
+  exit "$drift"
+fi
+
+if [ "$drift" -eq 1 ]; then
+  exec "$COMPOSE_BIN" -f "$COMPOSE_FILE" up -d --remove-orphans
+fi
+exit 0

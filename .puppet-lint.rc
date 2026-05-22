@@ -1,0 +1,3 @@
+--relative
+--no-strict_indent-check
+--ignore-paths=examples/**/*.pp,vendor/**/*.pp,spec/**/*.pp

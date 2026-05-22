@@ -1,0 +1,38 @@
+<%- |
+  String                $project_name,
+  Stdlib::Absolutepath  $compose_dir,
+  Stdlib::Absolutepath  $compose_binary,
+  String                $compose_file_name,
+  Boolean               $pull_before_run,
+  Integer               $service_timeout,
+  Hash[String, String]  $extra_systemd_config,
+  Optional[String]      $run_service,
+| -%>
+# Managed by Puppet - DO NOT EDIT
+# podman-compose scheduled job: <%= $project_name %> (rootless)
+
+[Unit]
+Description=Podman Compose Job - <%= $project_name %>
+Documentation=man:podman-compose(1)
+
+[Service]
+Type=oneshot
+WorkingDirectory=<%= $compose_dir %>
+# Tear down any leftovers from a prior (possibly failed) run so config/image
+# changes always take effect — equivalent to a forced recreate without
+# touching named volumes.
+ExecStartPre=-<%= $compose_binary %> -f <%= $compose_file_name %> down --remove-orphans
+<% if $pull_before_run { -%>
+ExecStartPre=<%= $compose_binary %> -f <%= $compose_file_name %> pull --quiet
+<% } -%>
+<% if $run_service { -%>
+ExecStart=<%= $compose_binary %> -f <%= $compose_file_name %> run --rm <%= $run_service %>
+ExecStopPost=-<%= $compose_binary %> -f <%= $compose_file_name %> down --remove-orphans
+<% } else { -%>
+ExecStart=<%= $compose_binary %> -f <%= $compose_file_name %> up --abort-on-container-exit --remove-orphans --force-recreate
+ExecStopPost=-<%= $compose_binary %> -f <%= $compose_file_name %> down --remove-orphans
+<% } -%>
+TimeoutStartSec=<%= $service_timeout %>
+<% $extra_systemd_config.each |String $key, String $value| { -%>
+<%= $key %>=<%= $value %>
+<% } -%>

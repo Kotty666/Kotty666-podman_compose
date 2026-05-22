@@ -1,0 +1,6 @@
+<%- |
+  Hash $compose,
+| -%>
+# Managed by Puppet - DO NOT EDIT
+# Module: podman_compose
+<%= to_yaml($compose).regsubst('\A---\n', '') -%>

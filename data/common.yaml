@@ -1,0 +1,14 @@
+---
+podman_compose::manage_package: true
+podman_compose::podman_package: 'podman'
+podman_compose::compose_install_method: 'package'
+podman_compose::compose_package: 'podman-compose'
+podman_compose::compose_pip_package: 'podman-compose'
+podman_compose::compose_ensure: 'present'
+podman_compose::compose_binary: '/usr/bin/podman-compose'
+podman_compose::manage_systemd_container: false
+podman_compose::systemd_container_package: 'systemd-container'
+podman_compose::user_compose_dir_name: 'compose'
+podman_compose::root_compose_dir: '/opt/compose'
+podman_compose::projects: {}
+podman_compose::cron_projects: {}

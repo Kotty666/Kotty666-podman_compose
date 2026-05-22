@@ -1,0 +1,268 @@
+# Example: Hiera node data for a compose host
+# File: hieradata/nodes/compose-host.example.com.yaml
+---
+classes:
+  - podman_compose
+
+# Override install method if needed
+# podman_compose::compose_install_method: pip
+
+podman_compose::projects:
+
+  # ── Rootful: Reverse Proxy ──────────────────────────────
+  traefik:
+    rootless: false
+    pull_on_start: true
+    compose:
+      services:
+        traefik:
+          image: "traefik:v3.1"
+          command:
+            - "--api.dashboard=true"
+            - "--providers.docker=true"
+            - "--providers.docker.exposedbydefault=false"
+            - "--entryPoints.web.address=:80"
+            - "--entryPoints.websecure.address=:443"
+            - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+            - "--certificatesresolvers.letsencrypt.acme.email=admin@example.com"
+            - "--certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json"
+          ports:
+            - "80:80"
+            - "443:443"
+          volumes:
+            - "/run/podman/podman.sock:/var/run/docker.sock:ro"
+            - "acme_data:/acme"
+          restart: unless-stopped
+          labels:
+            traefik.enable: "true"
+            traefik.http.routers.dashboard.rule: "Host(`traefik.example.com`)"
+            traefik.http.routers.dashboard.service: "api@internal"
+      volumes:
+        acme_data: {}
+
+  # ── Rootless: Web Application ───────────────────────────
+  webapp:
+    user: webapp
+    rootless: true
+    manage_user: true
+    # Registry auth — each project can use different credentials
+    registries:
+      ghcr.io:
+        username: deploy-bot
+        password: ENC[PKCS7,MIIBnQYJKoZIhvcNAQc...]
+    env_vars:
+      NODE_ENV: production
+      LOG_LEVEL: info
+      REDIS_URL: "redis://redis:6379"
+    env_secrets:
+      DATABASE_URL: ENC[PKCS7,MIIBmQYJKoZIhvcNAQc...]
+      SESSION_SECRET: ENC[PKCS7,MIIBqAYJKoZIhvcN...]
+    compose:
+      services:
+        app:
+          image: "ghcr.io/myorg/webapp:2.4.1"
+          ports:
+            - "127.0.0.1:3000:3000"
+          env_file:
+            - .env
+          volumes:
+            - "uploads:/app/uploads"
+          depends_on:
+            redis:
+              condition: service_healthy
+          restart: unless-stopped
+          deploy:
+            resources:
+              limits:
+                cpus: "2.0"
+                memory: "512M"
+          healthcheck:
+            test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
+            interval: "30s"
+            timeout: "5s"
+            retries: 3
+            start_period: "10s"
+        redis:
+          image: "redis:7-alpine"
+          volumes:
+            - "redis_data:/data"
+          restart: unless-stopped
+          healthcheck:
+            test: ["CMD", "redis-cli", "ping"]
+            interval: "10s"
+            timeout: "3s"
+            retries: 5
+      volumes:
+        uploads: {}
+        redis_data: {}
+
+  # ── Rootful: Monitoring Stack ───────────────────────────
+  monitoring:
+    rootless: false
+    compose_dir: /opt/monitoring
+    service_timeout: 600
+    # Internal registry with separate credentials
+    registries:
+      registry.internal.example.com:
+        username: monitoring-svc
+        password: ENC[PKCS7,MIIBrAYJKoZIhvcNAQc...]
+    extra_systemd_config:
+      LimitNOFILE: '65536'
+    compose:
+      services:
+        prometheus:
+          image: "prom/prometheus:v2.53.0"
+          ports:
+            - "127.0.0.1:9090:9090"
+          volumes:
+            - "./prometheus.yml:/etc/prometheus/prometheus.yml:ro"
+            - "./rules:/etc/prometheus/rules:ro"
+            - "prometheus_data:/prometheus"
+          command:
+            - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--storage.tsdb.retention.time=30d"
+            - "--web.enable-lifecycle"
+          networks:
+            - backend
+          restart: unless-stopped
+        grafana:
+          image: "grafana/grafana:11.1.0"
+          ports:
+            - "127.0.0.1:3001:3000"
+          environment:
+            GF_SECURITY_ADMIN_PASSWORD: "${GF_ADMIN_PW}"
+            GF_USERS_ALLOW_SIGN_UP: "false"
+          volumes:
+            - "grafana_data:/var/lib/grafana"
+            - "./provisioning:/etc/grafana/provisioning:ro"
+          networks:
+            - backend
+          depends_on:
+            - prometheus
+          restart: unless-stopped
+      volumes:
+        prometheus_data: {}
+        grafana_data: {}
+      networks:
+        backend:
+          driver: bridge
+    env_secrets:
+      GF_ADMIN_PW: ENC[PKCS7,MIIBiQYJKoZIhv...]
+
+  # ── Stopped project (managed but not running) ──────────
+  staging:
+    rootless: false
+    ensure: stopped
+    compose:
+      services:
+        app:
+          image: "ghcr.io/myorg/webapp:3.0.0-rc1"
+          ports:
+            - "127.0.0.1:3002:3000"
+          restart: unless-stopped
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Scheduled / Periodic Jobs (systemd timer + oneshot)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+podman_compose::cron_projects:
+
+  # ── Daily backup with restic (single service, rootless) ─
+  backup:
+    user: backup
+    rootless: true
+    on_calendar: '*-*-* 02:00:00'
+    randomized_delay_sec: '15min'
+    persistent: true
+    pull_before_run: false
+    run_service: restic
+    # Private registry for custom restic image
+    registries:
+      registry.internal.example.com:
+        username: backup-svc
+        password: ENC[PKCS7,MIIBpQYJKoZIhvcNAQc...]
+    env_vars:
+      RESTIC_REPOSITORY: 's3:https://s3.example.com/backups'
+      RESTIC_CACHE_DIR: '/var/cache/restic'
+    env_secrets:
+      RESTIC_PASSWORD: ENC[PKCS7,MIIBmQYJKoZIhvcNAQc...]
+      AWS_ACCESS_KEY_ID: ENC[PKCS7,MIIBqAYJKoZIhvcN...]
+      AWS_SECRET_ACCESS_KEY: ENC[PKCS7,MIIBrQYJKoZIhv...]
+    compose:
+      services:
+        restic:
+          image: "restic/restic:0.17.0"
+          hostname: "compose-host"
+          volumes:
+            - "/data:/data:ro"
+            - "/home/backup/compose/backup/cache:/var/cache/restic"
+          env_file:
+            - .env
+          command: ["backup", "/data", "--verbose", "--tag", "scheduled"]
+
+  # ── Hourly DB maintenance (full stack with sidecar) ─────
+  db_maintenance:
+    rootless: false
+    on_calendar: '*-*-* *:00:00'
+    persistent: false
+    service_timeout: 900
+    compose:
+      services:
+        worker:
+          image: "ghcr.io/myorg/db-maintenance:1.2"
+          environment:
+            DB_HOST: mariadb
+            DB_NAME: production
+          depends_on:
+            mariadb:
+              condition: service_healthy
+        mariadb:
+          image: "mariadb:10.11"
+          volumes:
+            - "db_data:/var/lib/mysql"
+          environment:
+            MARIADB_ROOT_PASSWORD: "${DB_ROOT_PW}"
+          healthcheck:
+            test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+            interval: "5s"
+            timeout: "3s"
+            retries: 10
+      volumes:
+        db_data: {}
+    env_secrets:
+      DB_ROOT_PW: ENC[PKCS7,MIIBiQYJKoZIhv...]
+
+  # ── Weekly certificate renewal check ────────────────────
+  certbot_renew:
+    rootless: false
+    on_calendar: 'Mon *-*-* 04:00:00'
+    randomized_delay_sec: '30min'
+    run_service: certbot
+    compose:
+      services:
+        certbot:
+          image: "certbot/certbot:latest"
+          volumes:
+            - "/etc/letsencrypt:/etc/letsencrypt"
+            - "/var/www/certbot:/var/www/certbot"
+          command: ["renew", "--quiet", "--deploy-hook", "echo renewed"]
+
+  # ── Every 5 minutes: health check reporter ──────────────
+  health_reporter:
+    user: monitoring
+    rootless: true
+    on_calendar: '*-*-* *:0/5:00'
+    persistent: false
+    pull_before_run: false
+    run_service: reporter
+    compose:
+      services:
+        reporter:
+          image: "ghcr.io/myorg/health-reporter:latest"
+          network_mode: host
+          env_file:
+            - .env
+    env_vars:
+      TARGETS: 'https://app.example.com,https://api.example.com'
+    env_secrets:
+      SLACK_WEBHOOK_URL: ENC[PKCS7,MIIBmQYJ...]

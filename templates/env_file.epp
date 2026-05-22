@@ -1,0 +1,7 @@
+<%- |
+  Hash[String, String] $env_vars,
+| -%>
+# Managed by Puppet - DO NOT EDIT
+<% $env_vars.each |String $key, String $value| { -%>
+<%= $key %>=<%= $value %>
+<% } -%>

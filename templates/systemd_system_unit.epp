@@ -1,0 +1,38 @@
+<%- |
+  String                $project_name,
+  Stdlib::Absolutepath  $compose_dir,
+  Stdlib::Absolutepath  $compose_binary,
+  String                $compose_file_name,
+  Boolean               $pull_on_start,
+  Integer               $service_timeout,
+  Hash[String, String]  $extra_systemd_config,
+| -%>
+# Managed by Puppet - DO NOT EDIT
+# podman-compose project: <%= $project_name %>
+
+[Unit]
+Description=Podman Compose Project - <%= $project_name %>
+Documentation=man:podman-compose(1)
+After=network-online.target
+Wants=network-online.target
+RequiresMountsFor=<%= $compose_dir %>
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=<%= $compose_dir %>
+<% if $pull_on_start { -%>
+ExecStartPre=<%= $compose_binary %> -f <%= $compose_file_name %> pull --quiet
+<% } -%>
+ExecStart=<%= $compose_binary %> -f <%= $compose_file_name %> up -d --remove-orphans
+ExecStop=<%= $compose_binary %> -f <%= $compose_file_name %> down
+ExecReload=<%= $compose_binary %> -f <%= $compose_file_name %> up -d --remove-orphans
+TimeoutStartSec=<%= $service_timeout %>
+Restart=on-failure
+RestartSec=30
+<% $extra_systemd_config.each |String $key, String $value| { -%>
+<%= $key %>=<%= $value %>
+<% } -%>
+
+[Install]
+WantedBy=multi-user.target
