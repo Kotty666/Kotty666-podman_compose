@@ -22,7 +22,7 @@ Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=<%= $compose_dir %>
 <% if $pull_on_start { -%>
-ExecStartPre=<%= $compose_binary %> -f <%= $compose_file_name %> pull --quiet
+ExecStartPre=<%= $compose_binary %> -f <%= $compose_file_name %> pull
 <% } -%>
 ExecStart=<%= $compose_binary %> -f <%= $compose_file_name %> up -d --remove-orphans
 ExecStop=<%= $compose_binary %> -f <%= $compose_file_name %> down

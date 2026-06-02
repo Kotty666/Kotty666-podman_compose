@@ -179,16 +179,25 @@ define podman_compose::project (
 
     # --- User management (rootless) ---
 
+    # ensure_resource so the same user can be shared across multiple
+    # projects and/or cron jobs without a duplicate declaration error.
+    # Ordering is expressed via a chaining arrow (which may appear more
+    # than once) rather than a `before` param, so resources sharing the
+    # user but with different parent dirs don't clash on ensure_resource's
+    # parameter comparison.
     if $rootless and $manage_user {
-      podman_compose::user { $_user:
-        before => File[$_parent_dir],
-      }
+      ensure_resource('podman_compose::user', $_user)
+      Podman_compose::User[$_user] -> File[$_parent_dir]
     }
 
     # --- Registry logins ---
     # Each registry gets a podman_compose::registry resource.
-    # ensure_resource avoids duplicates when multiple projects
-    # share the same user and registry.
+    # ensure_resource avoids duplicates when multiple projects/cron jobs
+    # share the same user and registry. Ordering toward the compose file
+    # is expressed via a chaining arrow (which may appear multiple times)
+    # rather than a before param, so resources sharing a registry but with
+    # different compose dirs don't clash on ensure_resource's parameter
+    # comparison.
 
     $registries.each |String $_server, Hash $_creds| {
       $_safe = regsubst($_server, '[^a-zA-Z0-9._-]', '_', 'G')
@@ -198,8 +207,8 @@ define podman_compose::project (
         password => $_creds['password'],
         user     => $_user,
         rootless => $rootless,
-        before   => File["${_compose_dir}/${compose_file_name}"],
       })
+      Podman_compose::Registry["${_user}@${_safe}"] -> File["${_compose_dir}/${compose_file_name}"]
     }
 
     # --- Directory & compose file ---

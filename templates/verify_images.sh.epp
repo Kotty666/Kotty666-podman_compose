@@ -30,7 +30,7 @@ IMAGES_FILE="$SCRIPT_DIR/.puppet-images.txt"
 # Refresh local images so digests reflect what the registry currently serves.
 # Failures (offline, auth, …) must not break the run — drift will still be
 # reported correctly based on whatever is locally available.
-"$COMPOSE_BIN" -f "$COMPOSE_FILE" pull --quiet >/dev/null 2>&1 || true
+"$COMPOSE_BIN" -f "$COMPOSE_FILE" pull >/dev/null 2>&1 || true
 
 drift=0
 while IFS=$'\t' read -r svc image; do

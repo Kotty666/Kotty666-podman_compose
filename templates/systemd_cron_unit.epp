@@ -27,7 +27,7 @@ WorkingDirectory=<%= $compose_dir %>
 # touching named volumes.
 ExecStartPre=-<%= $compose_binary %> -f <%= $compose_file_name %> down --remove-orphans
 <% if $pull_before_run { -%>
-ExecStartPre=<%= $compose_binary %> -f <%= $compose_file_name %> pull --quiet
+ExecStartPre=<%= $compose_binary %> -f <%= $compose_file_name %> pull
 <% } -%>
 <% if $run_service { -%>
 ExecStart=<%= $compose_binary %> -f <%= $compose_file_name %> run --rm <%= $run_service %>
