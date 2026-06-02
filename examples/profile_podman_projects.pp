@@ -3,16 +3,16 @@
 #
 # This file is provided as an EXAMPLE — it is not part of the
 # podman_compose module itself, since it depends on site-specific
-# functions (`environment::get_environment`, `environment::get_http_proxy`).
+# functions (`get_environment`, `get_http_proxy`).
 # Drop it into your own profile module as
 # `profile/manifests/podman_projects.pp` and adjust to taste.
 #
 # Hiera authors use the literal string defined by `registry_placeholder`
 # (default: 'harbor') wherever the real registry FQDN should appear.
 # The profile substitutes the placeholder with the value returned by
-# `environment::get_environment('harbor')` before declaring resources,
+# `get_environment('harbor')` before declaring resources,
 # and injects HTTP_PROXY / HTTPS_PROXY / NO_PROXY into env_vars based
-# on `environment::get_http_proxy()`.
+# on `get_http_proxy()`.
 #
 # @param projects
 #   Hiera hash of podman_compose::project definitions.
@@ -33,7 +33,7 @@
 #           username: deploy
 #           password: ENC[PKCS7,...]
 #       env_vars:
-#         AZ: "uuid-1,uuid-2,uuid-3"
+#         UUID: "uuid-1,uuid-2,uuid-3"
 #       compose:
 #         services:
 #           sync:
@@ -48,8 +48,8 @@ class profile::podman_projects (
 ) {
   include podman_compose
 
-  $_harbor     = environment::get_environment('harbor')
-  $_http_proxy = environment::get_http_proxy()
+  $_harbor     = get_environment('harbor')
+  $_http_proxy = get_http_proxy()
 
   # Whole-word match on the placeholder.
   $_re = "\\b${registry_placeholder}\\b"

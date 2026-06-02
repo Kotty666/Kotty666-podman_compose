@@ -6,9 +6,9 @@
 # `profile/functions/podman_projects/expand_splat.pp`.
 #
 # Use case: a web frontend writes a UUID list as a single string into
-# Hiera (e.g. `env_vars.AZ: "id1, id2 id3"`), but the container needs
+# Hiera (e.g. `env_vars.UUID: "id1, id2 id3"`), but the container needs
 # each id as a separate argv element so `python main.py -id id1 id2 id3`
-# works. Place `"<<splat:AZ>>"` in any compose array (`command`,
+# works. Place `"<<splat:UUID>>"` in any compose array (`command`,
 # `entrypoint`, …) and this function expands it inline.
 #
 # Tokens are recognised only when an array element matches the pattern

@@ -1,9 +1,9 @@
 # Example Hiera using profile::podman_projects.
 #
 # The literal token 'harbor' is replaced at catalog compile time with
-# the value returned by environment::get_environment('harbor').
+# the value returned by get_environment('harbor').
 # HTTP_PROXY/HTTPS_PROXY/NO_PROXY are injected into env_vars from
-# environment::get_http_proxy().
+# get_http_proxy().
 #
 # File location: hieradata/nodes/<fqdn>.yaml
 ---
@@ -24,13 +24,13 @@ profile::podman_projects::cron_projects:
       harbor/help:
         username: deploy
         password: ENC[PKCS7,MIIBmQYJKoZIhvcN...]
-    # AZ is sourced from a web frontend as a single comma- or
+    # UUID is sourced from a web frontend as a single comma- or
     # whitespace-separated string. expand_splat() turns the
-    # `<<splat:AZ>>` token below into separate argv elements, so the
+    # `<<splat:UUID>>` token below into separate argv elements, so the
     # container runs:
     #   python main.py -id 1111… 2222… 3333…
     env_vars:
-      AZ: "11111111-1111-1111-1111-111111111111, 22222222-2222-2222-2222-222222222222 33333333-3333-3333-3333-333333333333"
+      UUID: "11111111-1111-1111-1111-111111111111, 22222222-2222-2222-2222-222222222222 33333333-3333-3333-3333-333333333333"
     compose:
       services:
         sync:
@@ -41,6 +41,6 @@ profile::podman_projects::cron_projects:
             - "-id"
             # `<<splat:...>>` is deliberately not Hiera interpolation syntax,
             # so the profile function can consume it directly.
-            - "<<splat:AZ>>"
+            - "<<splat:UUID>>"
           env_file:
             - .env
