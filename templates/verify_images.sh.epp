@@ -46,6 +46,14 @@ while IFS=$'\t' read -r svc image; do
   running=$(podman inspect --format '{{.Image}}' "$cid" 2>/dev/null || true)
   desired=$(podman image inspect "$image" --format '{{.Id}}' 2>/dev/null || true)
 
+  # Normalise the IDs before comparing: depending on the podman version
+  # `container inspect .Image` and `image inspect .Id` return the digest with
+  # or without the `sha256:` prefix. Comparing the raw strings therefore
+  # reports a permanent (false) drift on every run. Strip the prefix so we
+  # compare the bare digest on both sides.
+  running="${running#sha256:}"
+  desired="${desired#sha256:}"
+
   if [ -z "$desired" ] || [ -z "$running" ] || [ "$running" != "$desired" ]; then
     drift=1
   fi
