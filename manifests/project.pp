@@ -312,6 +312,20 @@ define podman_compose::project (
         ],
       }
 
+      # Files that must exist before the unit is started: starting the
+      # service runs `podman-compose … up -d`, which reads the compose file
+      # (and .env). Unlike the rootful Service, the user-unit start exec has
+      # no implicit edge to these files, so declare it explicitly — otherwise
+      # the start (or the drift-check that requires it) can run before the
+      # compose file is written, failing with "missing files".
+      $_runtime_files = empty($_merged_env) ? {
+        true    => [File["${_compose_dir}/${compose_file_name}"]],
+        default => [
+          File["${_compose_dir}/${compose_file_name}"],
+          File["${_compose_dir}/.env"],
+        ],
+      }
+
       if $ensure == 'running' {
         exec { "systemd-user-start-${name}":
           command => "${_scu} /usr/bin/systemctl --user start ${_service_name}.service'",
@@ -319,7 +333,7 @@ define podman_compose::project (
           cwd     => $_safe_cwd,
           onlyif  => $_bus_check,
           unless  => "${_scu} /usr/bin/systemctl --user is-active ${_service_name}.service'",
-          require => Exec["systemd-user-enable-${name}"],
+          require => [Exec["systemd-user-enable-${name}"]] + $_runtime_files,
         }
       }
 
@@ -442,6 +456,7 @@ define podman_compose::project (
             require => [
               File["${_compose_dir}/.puppet-images.txt"],
               File["${_compose_dir}/.puppet-verify-images.sh"],
+              File["${_compose_dir}/${compose_file_name}"],
               Exec["systemd-user-start-${name}"],
             ],
           }

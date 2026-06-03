@@ -27,6 +27,12 @@ IMAGES_FILE="$SCRIPT_DIR/.puppet-images.txt"
 
 [ -f "$IMAGES_FILE" ] || exit 0
 
+# Without the compose file there is nothing to verify (e.g. the file has not
+# been written yet, or the project is being torn down). Report "no drift" so
+# the check stays quiet instead of letting podman-compose abort with
+# "missing files".
+[ -f "$SCRIPT_DIR/$COMPOSE_FILE" ] || exit 0
+
 # Refresh local images so digests reflect what the registry currently serves.
 # Failures (offline, auth, …) must not break the run — drift will still be
 # reported correctly based on whatever is locally available.
