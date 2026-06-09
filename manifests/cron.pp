@@ -46,7 +46,8 @@
 # @param accuracy_sec
 #   Timer coalescing accuracy (e.g. '1s' for precise, '1min' default).
 # @param compose_file_name
-#   Name of the compose file.
+#   Name of the compose file. Default: compose.yml (the modern Compose Spec
+#   name). Set to 'docker-compose.yml' for the legacy filename.
 # @param service_timeout
 #   TimeoutStartSec for the oneshot service.
 # @param extra_systemd_config
@@ -108,7 +109,7 @@ define podman_compose::cron (
   Boolean                             $persistent            = true,
   Optional[String[1]]                 $randomized_delay_sec  = undef,
   Optional[String[1]]                 $accuracy_sec          = undef,
-  String[1]                           $compose_file_name     = 'docker-compose.yml',
+  String[1]                           $compose_file_name     = 'compose.yml',
   Integer[60]                         $service_timeout       = 600,
   Hash[String, String]                $extra_systemd_config  = {},
   Podman_compose::Registries          $registries            = {},

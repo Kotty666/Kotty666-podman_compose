@@ -25,6 +25,8 @@
 
 * [`Podman_compose::Ensure`](#Podman_compose--Ensure): Ensure state for a podman-compose project
 * [`Podman_compose::Install_method`](#Podman_compose--Install_method): Install method for podman-compose
+* [`Podman_compose::Recreate_strategy`](#Podman_compose--Recreate_strategy): How a project's containers are (re)created when the compose file
+or .env changes.
 * [`Podman_compose::Registries`](#Podman_compose--Registries): Registry credentials hash structure
 
 ## Classes
@@ -381,9 +383,10 @@ Default value: `undef`
 
 Data type: `String[1]`
 
-Name of the compose file.
+Name of the compose file. Default: compose.yml (the modern Compose Spec
+name). Set to 'docker-compose.yml' for the legacy filename.
 
-Default value: `'docker-compose.yml'`
+Default value: `'compose.yml'`
 
 ##### <a name="-podman_compose--cron--service_timeout"></a>`service_timeout`
 
@@ -414,7 +417,7 @@ Default value: `{}`
 
 ### <a name="podman_compose--project"></a>`podman_compose::project`
 
-Creates the compose directory, renders docker-compose.yml from a Hash,
+Creates the compose directory, renders the compose file from a Hash,
 optionally manages an .env file, and sets up a systemd service to
 keep the project running.
 
@@ -458,6 +461,7 @@ The following parameters are available in the `podman_compose::project` defined 
 * [`extra_systemd_config`](#-podman_compose--project--extra_systemd_config)
 * [`registries`](#-podman_compose--project--registries)
 * [`verify_running_image`](#-podman_compose--project--verify_running_image)
+* [`recreate_strategy`](#-podman_compose--project--recreate_strategy)
 
 ##### <a name="-podman_compose--project--compose"></a>`compose`
 
@@ -543,9 +547,10 @@ Default value: `true`
 
 Data type: `String[1]`
 
-Name of the compose file. Default: docker-compose.yml
+Name of the compose file. Default: compose.yml (the modern Compose Spec
+name). Set to 'docker-compose.yml' for the legacy filename.
 
-Default value: `'docker-compose.yml'`
+Default value: `'compose.yml'`
 
 ##### <a name="-podman_compose--project--service_timeout"></a>`service_timeout`
 
@@ -583,6 +588,20 @@ recreated. Detects manual changes, registry digest updates behind a
 stable tag (e.g. ':latest'), and missing containers.
 
 Default value: `true`
+
+##### <a name="-podman_compose--project--recreate_strategy"></a>`recreate_strategy`
+
+Data type: `Podman_compose::Recreate_strategy`
+
+How containers are (re)created when the compose file or .env change.
+Defaults to 'force-recreate' so env changes are always applied cleanly
+(a plain `up -d` may leave running containers with stale `env_file:`
+values). Use 'down-up' when you change network definitions (subnet,
+driver, options), since `up` alone never re-creates an existing network
+— at the cost of a brief project downtime. Use 'rolling' for the old,
+least-disruptive `up -d` behaviour.
+
+Default value: `'force-recreate'`
 
 ### <a name="podman_compose--registry"></a>`podman_compose::registry`
 
@@ -741,6 +760,23 @@ Alias of `Enum['running', 'stopped', 'absent']`
 Install method for podman-compose
 
 Alias of `Enum['package', 'pip']`
+
+### <a name="Podman_compose--Recreate_strategy"></a>`Podman_compose::Recreate_strategy`
+
+* `rolling`        - `up -d --remove-orphans`. Least disruptive; relies on
+                     podman-compose's own change detection. May NOT pick up
+                     `.env` content changes delivered via `env_file:` and
+                     will NOT re-create existing networks.
+* `force-recreate` - `up -d --force-recreate --remove-orphans`. Re-creates
+                     every container so new env values and changed service
+                     network membership are applied cleanly. Does NOT
+                     re-create existing network definitions (subnet/driver).
+* `down-up`        - `down` then `up -d --remove-orphans`. Tears the project
+                     down (including its networks) and brings it back up, so
+                     network topology changes are applied too. Causes a brief
+                     downtime of the whole project.
+
+Alias of `Enum['rolling', 'force-recreate', 'down-up']`
 
 ### <a name="Podman_compose--Registries"></a>`Podman_compose::Registries`
 

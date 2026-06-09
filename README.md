@@ -61,7 +61,7 @@ puppet apply -e 'include podman_compose'
 
 This will:
 1. Install podman and podman-compose
-2. Create `/opt/compose/traefik/docker-compose.yml`
+2. Create `/opt/compose/traefik/compose.yml`
 3. Create and enable `podman-compose-traefik.service`
 4. Pull images and start the stack
 
@@ -108,7 +108,7 @@ podman_compose::projects:
 
 This creates:
 - System user `webapp` with linger enabled
-- `/home/webapp/compose/webapp/docker-compose.yml`
+- `/home/webapp/compose/webapp/compose.yml`
 - `/home/webapp/compose/webapp/.env` (mode 0600)
 - `~/.config/systemd/user/podman-compose-webapp.service`
 
@@ -245,11 +245,12 @@ Setting `ensure: absent` will:
 | `env_vars` | `Hash[String, String]` | `{}` | Environment variables for `.env` |
 | `env_secrets` | `Hash[String, Sensitive]` | `{}` | Sensitive env vars for `.env` |
 | `pull_on_start` | `Boolean` | `true` | Pull images on start |
-| `compose_file_name` | `String` | `'docker-compose.yml'` | Compose filename |
+| `compose_file_name` | `String` | `'compose.yml'` | Compose filename (set to `'docker-compose.yml'` for the legacy name) |
 | `service_timeout` | `Integer[60]` | `300` | Systemd start timeout |
 | `extra_systemd_config` | `Hash` | `{}` | Extra `[Service]` directives |
 | `registries` | `Hash` | `{}` | `server => {username, password}` for `podman login` |
 | `verify_running_image` | `Boolean` | `true` | On each Puppet run, compare running image digest vs desired and roll affected services if drifted |
+| `recreate_strategy` | `Enum['rolling','force-recreate','down-up']` | `'force-recreate'` | How containers are re-created on compose/`.env` change (see below) |
 
 ## How it works
 
@@ -259,7 +260,7 @@ Hiera YAML
     ▼
 podman_compose::project
     │
-    ├── docker-compose.yml         (from compose hash → to_yaml)
+    ├── compose.yml               (from compose hash → to_yaml)
     ├── .env                       (from env_vars + env_secrets)
     ├── .puppet-images.txt         (service → image map for drift check)
     ├── .puppet-verify-images.sh   (drift check + rolling update helper)
@@ -272,9 +273,20 @@ podman_compose::project
 
 Update flow:
 
-1. **Compose / .env file change** → notify → `podman-compose up -d --remove-orphans`.
-   `up -d` is idempotent: only services whose image or config actually changed get
-   recreated, the rest keep running. No global `down`/`up`.
+1. **Compose / .env file change** → notify → re-create according to `recreate_strategy`.
+   The default `force-recreate` runs `podman-compose up -d --force-recreate --remove-orphans`
+   so changes are always applied to the running containers — a plain `up -d` relies on
+   podman-compose's own change detection and can leave containers running with **stale
+   `.env` values** (when the env is delivered via an `env_file:` directive) and never
+   re-creates an already-existing network.
+
+   `recreate_strategy` controls the trade-off:
+
+   | Value | Command | Use when |
+   |---|---|---|
+   | `force-recreate` *(default)* | `up -d --force-recreate --remove-orphans` | You want env / config changes applied cleanly with minimal fuss. Re-creates every container; does **not** re-create existing network definitions (subnet/driver). |
+   | `down-up` | `down` then `up -d --remove-orphans` | You change **network topology** (subnet, driver, options). Tears the whole project down — including its networks — and brings it back up. Causes a brief project downtime. |
+   | `rolling` | `up -d --remove-orphans` | Least disruptive. Only services whose image/config podman-compose detects as changed are re-created. May miss `env_file:` content changes and network changes. |
 2. **Drift check on every Puppet run** (when `verify_running_image: true`):
    the helper script does a quiet `podman-compose pull`, then for each service
    compares the running container's image digest (`podman inspect -f '{{.Image}}'`)

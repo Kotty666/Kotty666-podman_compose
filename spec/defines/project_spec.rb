@@ -146,6 +146,71 @@ describe 'podman_compose::project' do
 
         it { is_expected.to compile.with_all_deps }
         it { is_expected.to contain_file('/opt/compose/demo').with_ensure('absent') }
+
+        it 'tears down even a legacy docker-compose.yml project' do
+          down = catalogue.resource('Exec', 'podman-compose-down-demo')
+          # Falls back to the legacy filename when compose.yml is absent...
+          expect(down[:command]).to match(%r{docker-compose\.yml})
+          # ...and the guard fires when either file exists.
+          expect(down[:onlyif]).to match(%r{compose\.yml.*docker-compose\.yml})
+        end
+      end
+
+      context 'recreate_strategy (rootful)' do
+        let(:base) do
+          {
+            'rootless' => false,
+            'compose'  => { 'services' => { 'web' => { 'image' => 'nginx:1.27' } } },
+          }
+        end
+
+        context 'default is force-recreate' do
+          let(:params) { base }
+
+          it { is_expected.to compile.with_all_deps }
+
+          it 'force-recreates containers so env changes are applied cleanly' do
+            is_expected.to contain_exec('podman-compose-restart-demo')
+              .with_command(%r{up -d --force-recreate --remove-orphans})
+          end
+        end
+
+        context 'rolling' do
+          let(:params) { base.merge('recreate_strategy' => 'rolling') }
+
+          it 'uses a plain up -d without force-recreate' do
+            cmd = catalogue.resource('Exec', 'podman-compose-restart-demo')[:command]
+            expect(cmd).to match(%r{up -d --remove-orphans})
+            expect(cmd).not_to match(%r{--force-recreate})
+          end
+        end
+
+        context 'down-up' do
+          let(:params) { base.merge('recreate_strategy' => 'down-up') }
+
+          it 'tears the project down then up so networks are re-created' do
+            is_expected.to contain_exec('podman-compose-restart-demo')
+              .with_command(%r{down && .* up -d --remove-orphans})
+          end
+        end
+      end
+
+      context 'recreate_strategy (rootless)' do
+        let(:params) do
+          {
+            'rootless'          => true,
+            'user'              => 'appuser',
+            'recreate_strategy' => 'down-up',
+            'compose'           => { 'services' => { 'web' => { 'image' => 'nginx:1.27' } } },
+          }
+        end
+
+        it { is_expected.to compile.with_all_deps }
+
+        it 'wraps the down-up sequence for the project user' do
+          is_expected.to contain_exec('podman-compose-restart-demo')
+            .with_command(%r{down && .* up -d --remove-orphans})
+        end
       end
     end
   end

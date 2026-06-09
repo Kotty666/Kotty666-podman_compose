@@ -1,6 +1,6 @@
 # @summary Manage a single podman-compose project
 #
-# Creates the compose directory, renders docker-compose.yml from a Hash,
+# Creates the compose directory, renders the compose file from a Hash,
 # optionally manages an .env file, and sets up a systemd service to
 # keep the project running.
 #
@@ -27,7 +27,8 @@
 # @param pull_on_start
 #   Pull images before (re)starting the service.
 # @param compose_file_name
-#   Name of the compose file. Default: docker-compose.yml
+#   Name of the compose file. Default: compose.yml (the modern Compose Spec
+#   name). Set to 'docker-compose.yml' for the legacy filename.
 # @param service_timeout
 #   Systemd TimeoutStartSec for pull + start.
 # @param extra_systemd_config
@@ -41,6 +42,14 @@
 #   `podman-compose up -d --remove-orphans` so only affected services are
 #   recreated. Detects manual changes, registry digest updates behind a
 #   stable tag (e.g. ':latest'), and missing containers.
+# @param recreate_strategy
+#   How containers are (re)created when the compose file or .env change.
+#   Defaults to 'force-recreate' so env changes are always applied cleanly
+#   (a plain `up -d` may leave running containers with stale `env_file:`
+#   values). Use 'down-up' when you change network definitions (subnet,
+#   driver, options), since `up` alone never re-creates an existing network
+#   — at the cost of a brief project downtime. Use 'rolling' for the old,
+#   least-disruptive `up -d` behaviour.
 #
 # @example Hiera definition
 #   podman_compose::projects:
@@ -69,11 +78,12 @@ define podman_compose::project (
   Hash[String[1], String]             $env_vars            = {},
   Hash[String[1], Sensitive[String]]  $env_secrets         = {},
   Boolean                             $pull_on_start       = true,
-  String[1]                           $compose_file_name   = 'docker-compose.yml',
+  String[1]                           $compose_file_name   = 'compose.yml',
   Integer[60]                         $service_timeout     = 300,
   Hash[String, String]                $extra_systemd_config = {},
   Podman_compose::Registries          $registries          = {},
   Boolean                             $verify_running_image = true,
+  Podman_compose::Recreate_strategy   $recreate_strategy   = 'force-recreate',
 ) {
   require podman_compose::install
 
@@ -95,6 +105,17 @@ define podman_compose::project (
   }
 
   $_service_name = "podman-compose-${name}"
+
+  # Compose sub-command(s) run by the rolling-update trigger when the compose
+  # file or .env change. A bare `up -d` relies on podman-compose's own change
+  # detection, which misses `.env` content delivered via `env_file:` and never
+  # re-creates existing networks — hence the configurable strategy.
+  $_cb = $podman_compose::compose_binary
+  $_recreate_ops = $recreate_strategy ? {
+    'rolling'        => "${_cb} -f ${compose_file_name} up -d --remove-orphans",
+    'force-recreate' => "${_cb} -f ${compose_file_name} up -d --force-recreate --remove-orphans",
+    'down-up'        => "${_cb} -f ${compose_file_name} down && ${_cb} -f ${compose_file_name} up -d --remove-orphans",
+  }
 
   # Validate compose hash has services
   unless 'services' in $compose {
@@ -128,13 +149,22 @@ define podman_compose::project (
   $_safe_cwd = '/tmp'
 
   if $ensure == 'absent' {
+    # A project created before compose.yml became the default may still carry
+    # the legacy 'docker-compose.yml' on disk. Resolve whichever compose file
+    # is actually present at teardown time so `down` always runs — otherwise
+    # the directory/unit get removed while containers and networks keep
+    # running unmanaged.
+    $_legacy_compose_file = 'docker-compose.yml'
+    $_down_resolve = "_cf=${compose_file_name}; [ -f \"\$_cf\" ] || _cf=${_legacy_compose_file};"
+    $_down_exists  = "/usr/bin/bash -c 'test -f ${_compose_dir}/${compose_file_name} || test -f ${_compose_dir}/${_legacy_compose_file}'"
+
     if $rootless {
       exec { "podman-compose-down-${name}":
-        command => "${_scu} ${podman_compose::compose_binary} -f ${compose_file_name} down --remove-orphans'",
+        command => "${_scu} ${_down_resolve} ${podman_compose::compose_binary} -f \"\$_cf\" down --remove-orphans'",
         cwd     => $_compose_dir,
         user    => $_user,
         onlyif  => [
-          "/usr/bin/test -f ${_compose_dir}/${compose_file_name}",
+          $_down_exists,
           $_bus_check,
         ],
         before  => File[$_compose_dir],
@@ -146,9 +176,9 @@ define podman_compose::project (
       }
     } else {
       exec { "podman-compose-down-${name}":
-        command => "${podman_compose::compose_binary} -f ${compose_file_name} down --remove-orphans",
+        command => "/usr/bin/bash -c '${_down_resolve} ${podman_compose::compose_binary} -f \"\$_cf\" down --remove-orphans'",
         cwd     => $_compose_dir,
-        onlyif  => "/usr/bin/test -f ${_compose_dir}/${compose_file_name}",
+        onlyif  => $_down_exists,
         path    => ['/usr/local/bin', '/usr/bin', '/bin'],
         before  => File[$_compose_dir],
       }
@@ -342,7 +372,7 @@ define podman_compose::project (
       # so compose recreates only services whose image/config actually changed
       # — other services keep running.
       exec { "podman-compose-restart-${name}":
-        command     => "${_scu} ${podman_compose::compose_binary} -f ${compose_file_name} up -d --remove-orphans'",
+        command     => "${_scu} ${_recreate_ops}'",
         cwd         => $_compose_dir,
         user        => $_user,
         onlyif      => $_bus_check,
@@ -393,8 +423,10 @@ define podman_compose::project (
       # Rolling-update trigger (refreshonly — only fires on compose/env file change).
       # Calls compose directly instead of `systemctl restart`, so only the
       # services whose image/config changed get recreated.
+      # Wrapped in `bash -c` so the 'down-up' strategy's `&&` is interpreted by
+      # a shell (Puppet's exec doesn't run through one by default).
       exec { "podman-compose-restart-${name}":
-        command     => "${podman_compose::compose_binary} -f ${compose_file_name} up -d --remove-orphans",
+        command     => "/usr/bin/bash -c '${_recreate_ops}'",
         cwd         => $_compose_dir,
         path        => ['/usr/local/bin', '/usr/bin', '/bin'],
         refreshonly => true,
