@@ -462,6 +462,11 @@ The following parameters are available in the `podman_compose::project` defined 
 * [`registries`](#-podman_compose--project--registries)
 * [`verify_running_image`](#-podman_compose--project--verify_running_image)
 * [`recreate_strategy`](#-podman_compose--project--recreate_strategy)
+* [`manage_subid`](#-podman_compose--project--manage_subid)
+* [`subuid_start`](#-podman_compose--project--subuid_start)
+* [`subuid_count`](#-podman_compose--project--subuid_count)
+* [`subgid_start`](#-podman_compose--project--subgid_start)
+* [`subgid_count`](#-podman_compose--project--subgid_count)
 
 ##### <a name="-podman_compose--project--compose"></a>`compose`
 
@@ -602,6 +607,51 @@ driver, options), since `up` alone never re-creates an existing network
 least-disruptive `up -d` behaviour.
 
 Default value: `'force-recreate'`
+
+##### <a name="-podman_compose--project--manage_subid"></a>`manage_subid`
+
+Data type: `Boolean`
+
+Whether to manage /etc/subuid and /etc/subgid entries for the project
+user. Only takes effect when subuid_start (and subgid_start) are also
+set. Has no effect when the user is pre-declared by a site profile.
+
+Default value: `true`
+
+##### <a name="-podman_compose--project--subuid_start"></a>`subuid_start`
+
+Data type: `Optional[Integer]`
+
+Start of the subordinate UID range for the project user. Each rootless
+user on a host needs a unique non-overlapping range. When set, the range
+is written to /etc/subuid. Leave unset if the user is declared elsewhere.
+
+Default value: `undef`
+
+##### <a name="-podman_compose--project--subuid_count"></a>`subuid_count`
+
+Data type: `Integer`
+
+Number of subordinate UIDs allocated to the project user (default 65536).
+
+Default value: `65536`
+
+##### <a name="-podman_compose--project--subgid_start"></a>`subgid_start`
+
+Data type: `Optional[Integer]`
+
+Start of the subordinate GID range for the project user. Must not overlap
+with any other user's range on the same host.
+
+Default value: `undef`
+
+##### <a name="-podman_compose--project--subgid_count"></a>`subgid_count`
+
+Data type: `Integer`
+
+Number of subordinate GIDs allocated to the project user (default 65536).
+
+Default value: `65536`
 
 ### <a name="podman_compose--registry"></a>`podman_compose::registry`
 

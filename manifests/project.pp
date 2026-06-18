@@ -50,6 +50,21 @@
 #   driver, options), since `up` alone never re-creates an existing network
 #   — at the cost of a brief project downtime. Use 'rolling' for the old,
 #   least-disruptive `up -d` behaviour.
+# @param manage_subid
+#   Whether to manage /etc/subuid and /etc/subgid entries for the project
+#   user. Only takes effect when subuid_start (and subgid_start) are also
+#   set. Has no effect when the user is pre-declared by a site profile.
+# @param subuid_start
+#   Start of the subordinate UID range for the project user. Each rootless
+#   user on a host needs a unique non-overlapping range. When set, the range
+#   is written to /etc/subuid. Leave unset if the user is declared elsewhere.
+# @param subuid_count
+#   Number of subordinate UIDs allocated to the project user (default 65536).
+# @param subgid_start
+#   Start of the subordinate GID range for the project user. Must not overlap
+#   with any other user's range on the same host.
+# @param subgid_count
+#   Number of subordinate GIDs allocated to the project user (default 65536).
 #
 # @example Hiera definition
 #   podman_compose::projects:
@@ -69,21 +84,26 @@
 #
 define podman_compose::project (
   Hash                                $compose,
-  Podman_compose::Ensure              $ensure              = 'running',
-  Boolean                             $rootless            = true,
-  Optional[String[1]]                 $user                = undef,
-  Optional[String[1]]                 $group               = undef,
-  Boolean                             $manage_user         = true,
-  Optional[Stdlib::Absolutepath]      $compose_dir         = undef,
-  Hash[String[1], String]             $env_vars            = {},
-  Hash[String[1], Sensitive[String]]  $env_secrets         = {},
-  Boolean                             $pull_on_start       = true,
-  String[1]                           $compose_file_name   = 'compose.yml',
-  Integer[60]                         $service_timeout     = 300,
+  Podman_compose::Ensure              $ensure               = 'running',
+  Boolean                             $rootless             = true,
+  Optional[String[1]]                 $user                 = undef,
+  Optional[String[1]]                 $group                = undef,
+  Boolean                             $manage_user          = true,
+  Optional[Stdlib::Absolutepath]      $compose_dir          = undef,
+  Hash[String[1], String]             $env_vars             = {},
+  Hash[String[1], Sensitive[String]]  $env_secrets          = {},
+  Boolean                             $pull_on_start        = true,
+  String[1]                           $compose_file_name    = 'compose.yml',
+  Integer[60]                         $service_timeout      = 300,
   Hash[String, String]                $extra_systemd_config = {},
-  Podman_compose::Registries          $registries          = {},
+  Podman_compose::Registries          $registries           = {},
   Boolean                             $verify_running_image = true,
-  Podman_compose::Recreate_strategy   $recreate_strategy   = 'force-recreate',
+  Podman_compose::Recreate_strategy   $recreate_strategy    = 'force-recreate',
+  Boolean                             $manage_subid         = true,
+  Optional[Integer]                   $subuid_start         = undef,
+  Integer                             $subuid_count         = 65536,
+  Optional[Integer]                   $subgid_start         = undef,
+  Integer                             $subgid_count         = 65536,
 ) {
   require podman_compose::install
 
@@ -215,8 +235,24 @@ define podman_compose::project (
     # than once) rather than a `before` param, so resources sharing the
     # user but with different parent dirs don't clash on ensure_resource's
     # parameter comparison.
+    #
+    # Only inject subid params when the caller explicitly set subuid_start.
+    # If the user resource is already declared elsewhere (e.g. a site profile
+    # that calls podman_compose::user directly with its own ranges), passing
+    # undef ranges here would cause ensure_resource to attempt a conflicting
+    # duplicate declaration.
     if $rootless and $manage_user {
-      ensure_resource('podman_compose::user', $_user)
+      $_user_params = $subuid_start ? {
+        undef   => {},
+        default => {
+          manage_subid => $manage_subid,
+          subuid_start => $subuid_start,
+          subuid_count => $subuid_count,
+          subgid_start => $subgid_start,
+          subgid_count => $subgid_count,
+        },
+      }
+      ensure_resource('podman_compose::user', $_user, $_user_params)
       Podman_compose::User[$_user] -> File[$_parent_dir]
     }
 

@@ -45,9 +45,11 @@ describe 'podman_compose::project' do
       context 'rootless with user' do
         let(:params) do
           {
-            'rootless' => true,
-            'user'     => 'appuser',
-            'compose'  => {
+            'rootless'     => true,
+            'user'         => 'appuser',
+            'subuid_start' => 100_000,
+            'subgid_start' => 100_000,
+            'compose'      => {
               'services' => {
                 'web' => { 'image' => 'nginx:1.27' },
               },
@@ -66,17 +68,21 @@ describe 'podman_compose::project' do
           <<~PP
             include podman_compose
             podman_compose::project { 'other':
-              rootless => true,
-              user     => 'appuser',
-              compose  => { 'services' => { 'api' => { 'image' => 'busybox' } } },
+              rootless     => true,
+              user         => 'appuser',
+              subuid_start => 100000,
+              subgid_start => 100000,
+              compose      => { 'services' => { 'api' => { 'image' => 'busybox' } } },
             }
           PP
         end
         let(:params) do
           {
-            'rootless' => true,
-            'user'     => 'appuser',
-            'compose'  => {
+            'rootless'     => true,
+            'user'         => 'appuser',
+            'subuid_start' => 100_000,
+            'subgid_start' => 100_000,
+            'compose'      => {
               'services' => {
                 'web' => { 'image' => 'nginx:1.27' },
               },
@@ -96,19 +102,23 @@ describe 'podman_compose::project' do
           <<~PP
             include podman_compose
             podman_compose::project { 'other':
-              rootless   => true,
-              user       => 'appuser',
-              registries => { 'harbor.example' => { 'username' => 'robot', 'password' => Sensitive('secret') } },
-              compose    => { 'services' => { 'api' => { 'image' => 'harbor.example/api' } } },
+              rootless     => true,
+              user         => 'appuser',
+              subuid_start => 100000,
+              subgid_start => 100000,
+              registries   => { 'harbor.example' => { 'username' => 'robot', 'password' => Sensitive('secret') } },
+              compose      => { 'services' => { 'api' => { 'image' => 'harbor.example/api' } } },
             }
           PP
         end
         let(:params) do
           {
-            'rootless'   => true,
-            'user'       => 'appuser',
-            'registries' => { 'harbor.example' => { 'username' => 'robot', 'password' => sensitive('secret') } },
-            'compose'    => {
+            'rootless'     => true,
+            'user'         => 'appuser',
+            'subuid_start' => 100_000,
+            'subgid_start' => 100_000,
+            'registries'   => { 'harbor.example' => { 'username' => 'robot', 'password' => sensitive('secret') } },
+            'compose'      => {
               'services' => {
                 'web' => { 'image' => 'harbor.example/web' },
               },
@@ -200,6 +210,8 @@ describe 'podman_compose::project' do
           {
             'rootless'          => true,
             'user'              => 'appuser',
+            'subuid_start'      => 100_000,
+            'subgid_start'      => 100_000,
             'recreate_strategy' => 'down-up',
             'compose'           => { 'services' => { 'web' => { 'image' => 'nginx:1.27' } } },
           }
