@@ -636,18 +636,21 @@ o;!
 ;%[ ;&@¸;'0;@
 ;F:@line_range@:@ref_tag_recurse_counti :@namespace@:
 @pathI"/puppet_defined_types::podman_compose::cron;Fo;
-;o;;I"manifests/user.pp;T;I"define podman_compose::user (
+;o;;I"manifests/user.pp;T;I"define podman_compose::user (
   String[1]            $user         = $name,
   Stdlib::Absolutepath $home         = "/home/${name}",
   Stdlib::Absolutepath $shell        = '/bin/bash',
   Boolean              $system_user  = true,
   Boolean              $manage_home  = true,
   Boolean              $manage_subid = true,
-  Integer              $subuid_start = 100000,
+  Optional[Integer]    $subuid_start = undef,
   Integer              $subuid_count = 65536,
-  Integer              $subgid_start = 100000,
+  Optional[Integer]    $subgid_start = undef,
   Integer              $subgid_count = 65536,
 ) {
+  if $manage_subid and ($subuid_start == undef or $subgid_start == undef) {
+    fail("podman_compose::user[${name}]: subuid_start and subgid_start must be set when manage_subid is true. Each user on a host needs a unique non-overlapping range (e.g. first user: 100000, second: 165536).")
+  }
   # Avoid duplicate user resources
   if ! defined(User[$user]) {
     user { $user:
@@ -679,15 +682,14 @@ o;!
     }
 
     # After adding subuid/subgid entries podman needs to migrate existing
-    # storage to apply the new mappings.
+    # storage to apply the new mappings. The command runs as the target user
+    # with a shell so XDG_RUNTIME_DIR is evaluated at runtime. Requires the
+    # user manager to be running so /run/user/<uid> already exists.
     exec { "podman-system-migrate-${user}":
-      command     => "/usr/bin/podman system migrate",
+      command     => "/usr/bin/bash -c \"export XDG_RUNTIME_DIR=/run/user/\$(id -u); export HOME=${home}; /usr/bin/podman system migrate\"",
       refreshonly => true,
       user        => $user,
-      environment => [
-        "HOME=${home}",
-        "XDG_RUNTIME_DIR=/run/user/\$(id -u ${user})",
-      ],
+      require     => Exec["start-user-manager-${user}"],
       subscribe   => [Exec["subuid-${user}"], Exec["subgid-${user}"]],
     }
   }
@@ -713,10 +715,12 @@ o;!
 
   # Ensure XDG_RUNTIME_DIR will be available at next login
   # (systemd-logind creates it, but we verify the linger file)
-};T;i!;o;;F;i ;i ;[o;;I"	user;T;I"String[1];T;I"
+};T;i$;o;;F;i ;i#;[o;;I"	user;T;I"String[1];T;I"
 $name;To;;I"	home;T;I"Stdlib::Absolutepath;T;I""/home/${name}";To;;I"
-shell;T;I"Stdlib::Absolutepath;T;I"'/bin/bash';To;;I"system_user;T;I"Boolean;T;I"	true;To;;I"manage_home;T;I"Boolean;T;I"	true;To;;I"manage_subid;T;I"Boolean;T;I"	true;To;;I"subuid_start;T;I"Integer;T;I"100000;To;;I"subuid_count;T;I"Integer;T;I"
-65536;To;;I"subgid_start;T;I"Integer;T;I"100000;To;;I"subgid_count;T;I"Integer;T;I"
+shell;T;I"Stdlib::Absolutepath;T;I"'/bin/bash';To;;I"system_user;T;I"Boolean;T;I"	true;To;;I"manage_home;T;I"Boolean;T;I"	true;To;;I"manage_subid;T;I"Boolean;T;I"	true;To;;I"subuid_start;T;I"Optional[Integer];T;I"
+undef;To;;I"subuid_count;T;I"Integer;T;I"
+65536;To;;I"subgid_start;T;I"Optional[Integer];T;I"
+undef;To;;I"subgid_count;T;I"Integer;T;I"
 65536;T;I"podman_compose::user;F;IC;"¿Creates the user, enables loginctl linger (so user services
 persist after logout), ensures required directories exist, and
 configures /etc/subuid and /etc/subgid for rootless user namespaces.;T;0;0;F; [o;!
@@ -733,15 +737,18 @@ param;F;#I"Create as system user.;T;I"system_user;T;$0;0o;!
 ;"I"
 param;F;#I"*Let Puppet manage the home directory.;T;I"manage_home;T;$0;0o;!
 ;"I"
-param;F;#I"?Start of the subordinate UID range allocated to this user.;T;I"subuid_start;T;$0;0o;!
+param;F;#I";Whether to manage /etc/subuid and /etc/subgid entries.;T;I"manage_subid;T;$0;0o;!
 ;"I"
-param;F;#I"7Number of subordinate UIDs allocated to this user.;T;I"subuid_count;T;$0;0o;!
+param;F;#I"·Start of the subordinate UID range allocated to this user.
+Each user on a host must get a non-overlapping range.
+Common convention: first user 100000, second 165536, third 231072, â€¦;T;I"subuid_start;T;$0;0o;!
 ;"I"
-param;F;#I"?Start of the subordinate GID range allocated to this user.;T;I"subgid_start;T;$0;0o;!
+param;F;#I"GNumber of subordinate UIDs allocated to this user (default 65536).;T;I"subuid_count;T;$0;0o;!
 ;"I"
-param;F;#I"7Number of subordinate GIDs allocated to this user.;T;I"subgid_count;T;$0;0o;!
+param;F;#I"~Start of the subordinate GID range allocated to this user.
+Must not overlap with any other user's range on the same host.;T;I"subgid_start;T;$0;0o;!
 ;"I"
-param;F;#I";Whether to manage /etc/subuid and /etc/subgid entries.;T;I"manage_subid;T;$0;0;%[ ;&I"e@summary Manage a system user for rootless podman-compose
+param;F;#I"GNumber of subordinate GIDs allocated to this user (default 65536).;T;I"subgid_count;T;$0;0;%[ ;&I"G@summary Manage a system user for rootless podman-compose
 
 Creates the user, enables loginctl linger (so user services
 persist after logout), ensures required directories exist, and
@@ -757,17 +764,20 @@ configures /etc/subuid and /etc/subgid for rootless user namespaces.
   Create as system user.
 @param manage_home
   Let Puppet manage the home directory.
-@param subuid_start
-  Start of the subordinate UID range allocated to this user.
-@param subuid_count
-  Number of subordinate UIDs allocated to this user.
-@param subgid_start
-  Start of the subordinate GID range allocated to this user.
-@param subgid_count
-  Number of subordinate GIDs allocated to this user.
 @param manage_subid
   Whether to manage /etc/subuid and /etc/subgid entries.
-;T;'0;[[@W@Y[@[@][@_@a[@c@e[@g@i[@k@m[@o@q[@s@u[@w@y[@{@};IC;[ ;(@P;)IC;[ ;(@P;*IC;[ ;(@P;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@Ri!;3T;:podman_compose::user;5;6;7;8; [ ;9{ ;IC;"¿Creates the user, enables loginctl linger (so user services
+@param subuid_start
+  Start of the subordinate UID range allocated to this user.
+  Each user on a host must get a non-overlapping range.
+  Common convention: first user 100000, second 165536, third 231072, â€¦
+@param subuid_count
+  Number of subordinate UIDs allocated to this user (default 65536).
+@param subgid_start
+  Start of the subordinate GID range allocated to this user.
+  Must not overlap with any other user's range on the same host.
+@param subgid_count
+  Number of subordinate GIDs allocated to this user (default 65536).
+;T;'0;[[@W@Y[@[@][@_@a[@c@e[@g@i[@k@m[@o@q[@s@u[@w@y[@{@};IC;[ ;(@P;)IC;[ ;(@P;*IC;[ ;(@P;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@Ri$;3T;:podman_compose::user;5;6;7;8; [ ;9{ ;IC;"¿Creates the user, enables loginctl linger (so user services
 persist after logout), ensures required directories exist, and
 configures /etc/subuid and /etc/subgid for rootless user namespaces.;T; [o;!
 ;"I"summary;F;#I"5Manage a system user for rootless podman-compose;T;0;$0;@Po;!
@@ -783,15 +793,18 @@ param;F;#I"Create as system user.;T;I"system_user;T;$[@d;@Po;!
 ;"I"
 param;F;#I"*Let Puppet manage the home directory.;T;I"manage_home;T;$[@h;@Po;!
 ;"I"
-param;F;#I"?Start of the subordinate UID range allocated to this user.;T;I"subuid_start;T;$[@p;@Po;!
-;"I"
-param;F;#I"7Number of subordinate UIDs allocated to this user.;T;I"subuid_count;T;$[@t;@Po;!
-;"I"
-param;F;#I"?Start of the subordinate GID range allocated to this user.;T;I"subgid_start;T;$[@x;@Po;!
-;"I"
-param;F;#I"7Number of subordinate GIDs allocated to this user.;T;I"subgid_count;T;$[@|;@Po;!
-;"I"
 param;F;#I";Whether to manage /etc/subuid and /etc/subgid entries.;T;I"manage_subid;T;$[@l;@Po;!
+;"I"
+param;F;#I"·Start of the subordinate UID range allocated to this user.
+Each user on a host must get a non-overlapping range.
+Common convention: first user 100000, second 165536, third 231072, â€¦;T;I"subuid_start;T;$[@p;@Po;!
+;"I"
+param;F;#I"GNumber of subordinate UIDs allocated to this user (default 65536).;T;I"subuid_count;T;$[@t;@Po;!
+;"I"
+param;F;#I"~Start of the subordinate GID range allocated to this user.
+Must not overlap with any other user's range on the same host.;T;I"subgid_start;T;$[@x;@Po;!
+;"I"
+param;F;#I"GNumber of subordinate GIDs allocated to this user (default 65536).;T;I"subgid_count;T;$[@|;@Po;!
 ;"I"api;F;#@M;0;$0;@P;%[ ;&@­;'0;@P;F;:@T;;i ;<@;=I"/puppet_defined_types::podman_compose::user;Fo;
 ;o;;I"manifests/project.pp;T;I"àEdefine podman_compose::project (
   Hash                                $compose,

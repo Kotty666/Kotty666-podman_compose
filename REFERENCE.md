@@ -707,11 +707,11 @@ The following parameters are available in the `podman_compose::user` defined typ
 * [`shell`](#-podman_compose--user--shell)
 * [`system_user`](#-podman_compose--user--system_user)
 * [`manage_home`](#-podman_compose--user--manage_home)
+* [`manage_subid`](#-podman_compose--user--manage_subid)
 * [`subuid_start`](#-podman_compose--user--subuid_start)
 * [`subuid_count`](#-podman_compose--user--subuid_count)
 * [`subgid_start`](#-podman_compose--user--subgid_start)
 * [`subgid_count`](#-podman_compose--user--subgid_count)
-* [`manage_subid`](#-podman_compose--user--manage_subid)
 
 ##### <a name="-podman_compose--user--user"></a>`user`
 
@@ -753,38 +753,6 @@ Let Puppet manage the home directory.
 
 Default value: `true`
 
-##### <a name="-podman_compose--user--subuid_start"></a>`subuid_start`
-
-Data type: `Integer`
-
-Start of the subordinate UID range allocated to this user.
-
-Default value: `100000`
-
-##### <a name="-podman_compose--user--subuid_count"></a>`subuid_count`
-
-Data type: `Integer`
-
-Number of subordinate UIDs allocated to this user.
-
-Default value: `65536`
-
-##### <a name="-podman_compose--user--subgid_start"></a>`subgid_start`
-
-Data type: `Integer`
-
-Start of the subordinate GID range allocated to this user.
-
-Default value: `100000`
-
-##### <a name="-podman_compose--user--subgid_count"></a>`subgid_count`
-
-Data type: `Integer`
-
-Number of subordinate GIDs allocated to this user.
-
-Default value: `65536`
-
 ##### <a name="-podman_compose--user--manage_subid"></a>`manage_subid`
 
 Data type: `Boolean`
@@ -792,6 +760,41 @@ Data type: `Boolean`
 Whether to manage /etc/subuid and /etc/subgid entries.
 
 Default value: `true`
+
+##### <a name="-podman_compose--user--subuid_start"></a>`subuid_start`
+
+Data type: `Optional[Integer]`
+
+Start of the subordinate UID range allocated to this user.
+Each user on a host must get a non-overlapping range.
+Common convention: first user 100000, second 165536, third 231072, …
+
+Default value: `undef`
+
+##### <a name="-podman_compose--user--subuid_count"></a>`subuid_count`
+
+Data type: `Integer`
+
+Number of subordinate UIDs allocated to this user (default 65536).
+
+Default value: `65536`
+
+##### <a name="-podman_compose--user--subgid_start"></a>`subgid_start`
+
+Data type: `Optional[Integer]`
+
+Start of the subordinate GID range allocated to this user.
+Must not overlap with any other user's range on the same host.
+
+Default value: `undef`
+
+##### <a name="-podman_compose--user--subgid_count"></a>`subgid_count`
+
+Data type: `Integer`
+
+Number of subordinate GIDs allocated to this user (default 65536).
+
+Default value: `65536`
 
 ## Data types
 

@@ -1,6 +1,6 @@
 manifests/cron.pp 7ac9dd03533adf98963bc57831cae1427b04b719
 manifests/init.pp 465d717a9e90563884c1393b8197cfcd40e85ae6
-manifests/user.pp 70b2590577f1217138226d3807b6b16bc51d3da9
+manifests/user.pp 17f7cb675807631518d3f8505b47834ff6e448ad
 manifests/install.pp 154d752f14d9b5433b888f9e6e7e915eacf0e926
 manifests/project.pp 6f264769133c401922d858c844a1600c841c952b
 manifests/registry.pp 674e0357b53afef662c9d6d960bbc2804d1de8ce
