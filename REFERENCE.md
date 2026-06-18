@@ -695,7 +695,8 @@ Default value: `'present'`
 ### <a name="podman_compose--user"></a>`podman_compose::user`
 
 Creates the user, enables loginctl linger (so user services
-persist after logout), and ensures required directories exist.
+persist after logout), ensures required directories exist, and
+configures /etc/subuid and /etc/subgid for rootless user namespaces.
 
 #### Parameters
 
@@ -706,6 +707,11 @@ The following parameters are available in the `podman_compose::user` defined typ
 * [`shell`](#-podman_compose--user--shell)
 * [`system_user`](#-podman_compose--user--system_user)
 * [`manage_home`](#-podman_compose--user--manage_home)
+* [`subuid_start`](#-podman_compose--user--subuid_start)
+* [`subuid_count`](#-podman_compose--user--subuid_count)
+* [`subgid_start`](#-podman_compose--user--subgid_start)
+* [`subgid_count`](#-podman_compose--user--subgid_count)
+* [`manage_subid`](#-podman_compose--user--manage_subid)
 
 ##### <a name="-podman_compose--user--user"></a>`user`
 
@@ -744,6 +750,46 @@ Default value: `true`
 Data type: `Boolean`
 
 Let Puppet manage the home directory.
+
+Default value: `true`
+
+##### <a name="-podman_compose--user--subuid_start"></a>`subuid_start`
+
+Data type: `Integer`
+
+Start of the subordinate UID range allocated to this user.
+
+Default value: `100000`
+
+##### <a name="-podman_compose--user--subuid_count"></a>`subuid_count`
+
+Data type: `Integer`
+
+Number of subordinate UIDs allocated to this user.
+
+Default value: `65536`
+
+##### <a name="-podman_compose--user--subgid_start"></a>`subgid_start`
+
+Data type: `Integer`
+
+Start of the subordinate GID range allocated to this user.
+
+Default value: `100000`
+
+##### <a name="-podman_compose--user--subgid_count"></a>`subgid_count`
+
+Data type: `Integer`
+
+Number of subordinate GIDs allocated to this user.
+
+Default value: `65536`
+
+##### <a name="-podman_compose--user--manage_subid"></a>`manage_subid`
+
+Data type: `Boolean`
+
+Whether to manage /etc/subuid and /etc/subgid entries.
 
 Default value: `true`
 
