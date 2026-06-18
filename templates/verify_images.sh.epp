@@ -72,12 +72,12 @@ while IFS=$'\t' read -r svc image; do
   cid=$(podman ps \
     --filter "label=com.docker.compose.project=${PROJECT}" \
     --filter "label=com.docker.compose.service=${svc}" \
-    --format '{{.Id}}' 2>/dev/null | head -n1 || true)
+    --format '{{.ID}}' 2>/dev/null | head -n1 || true)
   if [ -z "$cid" ]; then
     cid=$(podman ps \
       --filter "label=io.podman.compose.project=${PROJECT}" \
       --filter "label=io.podman.compose.service=${svc}" \
-      --format '{{.Id}}' 2>/dev/null | head -n1 || true)
+      --format '{{.ID}}' 2>/dev/null | head -n1 || true)
   fi
   if [ -z "$cid" ]; then
     drift=1
