@@ -68,15 +68,14 @@ define podman_compose::user (
     }
 
     # After adding subuid/subgid entries podman needs to migrate existing
-    # storage to apply the new mappings.
+    # storage to apply the new mappings. The command runs as the target user
+    # with a shell so XDG_RUNTIME_DIR is evaluated at runtime. Requires the
+    # user manager to be running so /run/user/<uid> already exists.
     exec { "podman-system-migrate-${user}":
-      command     => '/usr/bin/podman system migrate',
+      command     => "/usr/bin/bash -c \"export XDG_RUNTIME_DIR=/run/user/\$(id -u); export HOME=${home}; /usr/bin/podman system migrate\"",
       refreshonly => true,
       user        => $user,
-      environment => [
-        "HOME=${home}",
-        "XDG_RUNTIME_DIR=/run/user/\$(id -u ${user})",
-      ],
+      require     => Exec["start-user-manager-${user}"],
       subscribe   => [Exec["subuid-${user}"], Exec["subgid-${user}"]],
     }
   }
