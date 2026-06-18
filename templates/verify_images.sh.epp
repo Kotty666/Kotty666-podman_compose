@@ -49,7 +49,7 @@ while IFS=$'\t' read -r svc image; do
     continue
   fi
 
-  running=$(podman inspect --format '{{.Image}}' "$cid" 2>/dev/null || true)
+  running=$(podman inspect --format '{{.ImageID}}' "$cid" 2>/dev/null || true)
   desired=$(podman image inspect "$image" --format '{{.Id}}' 2>/dev/null || true)
 
   # Normalise the IDs before comparing: depending on the podman version
