@@ -14,16 +14,19 @@
 #   Create as system user.
 # @param manage_home
 #   Let Puppet manage the home directory.
-# @param subuid_start
-#   Start of the subordinate UID range allocated to this user.
-# @param subuid_count
-#   Number of subordinate UIDs allocated to this user.
-# @param subgid_start
-#   Start of the subordinate GID range allocated to this user.
-# @param subgid_count
-#   Number of subordinate GIDs allocated to this user.
 # @param manage_subid
 #   Whether to manage /etc/subuid and /etc/subgid entries.
+# @param subuid_start
+#   Start of the subordinate UID range allocated to this user.
+#   Each user on a host must get a non-overlapping range.
+#   Common convention: first user 100000, second 165536, third 231072, …
+# @param subuid_count
+#   Number of subordinate UIDs allocated to this user (default 65536).
+# @param subgid_start
+#   Start of the subordinate GID range allocated to this user.
+#   Must not overlap with any other user's range on the same host.
+# @param subgid_count
+#   Number of subordinate GIDs allocated to this user (default 65536).
 #
 define podman_compose::user (
   String[1]            $user         = $name,
@@ -32,11 +35,14 @@ define podman_compose::user (
   Boolean              $system_user  = true,
   Boolean              $manage_home  = true,
   Boolean              $manage_subid = true,
-  Integer              $subuid_start = 100000,
+  Optional[Integer]    $subuid_start = undef,
   Integer              $subuid_count = 65536,
-  Integer              $subgid_start = 100000,
+  Optional[Integer]    $subgid_start = undef,
   Integer              $subgid_count = 65536,
 ) {
+  if $manage_subid and ($subuid_start == undef or $subgid_start == undef) {
+    fail("podman_compose::user[${name}]: subuid_start and subgid_start must be set when manage_subid is true. Each user on a host needs a unique non-overlapping range (e.g. first user: 100000, second: 165536).")
+  }
   # Avoid duplicate user resources
   if ! defined(User[$user]) {
     user { $user:
