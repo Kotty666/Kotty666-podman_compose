@@ -39,11 +39,46 @@ IMAGES_FILE="$SCRIPT_DIR/.puppet-images.txt"
 "$COMPOSE_BIN" -f "$COMPOSE_FILE" pull >/dev/null 2>&1 || true
 
 drift=0
+
+# Resolve the Compose project name following the same precedence as Compose:
+# 1. COMPOSE_PROJECT_NAME env var
+# 2. top-level `name:` in the compose file
+# 3. COMPOSE_PROJECT_NAME= in the .env file
+# 4. directory basename, lowercased (Compose spec mandates lowercase)
+_compose_project_name() {
+  [ -n "${COMPOSE_PROJECT_NAME:-}" ] && { echo "$COMPOSE_PROJECT_NAME"; return; }
+  local n
+  n=$(grep -m1 '^name:' "$SCRIPT_DIR/$COMPOSE_FILE" 2>/dev/null \
+      | sed 's/^name:[[:space:]]*//' | tr -d "\"'" | xargs || true)
+  [ -n "$n" ] && { echo "$n"; return; }
+  if [ -f "$SCRIPT_DIR/.env" ]; then
+    n=$(grep -m1 '^COMPOSE_PROJECT_NAME=' "$SCRIPT_DIR/.env" 2>/dev/null \
+        | cut -d= -f2- | tr -d "\"'" | xargs || true)
+    [ -n "$n" ] && { echo "$n"; return; }
+  fi
+  basename "$SCRIPT_DIR" | tr '[:upper:]' '[:lower:]'
+}
+PROJECT="$(_compose_project_name)"
+
 while IFS=$'\t' read -r svc image; do
   [ -z "${svc:-}" ] && continue
   [ -z "${image:-}" ] && continue
 
-  cid=$("$COMPOSE_BIN" -f "$COMPOSE_FILE" ps -q "$svc" 2>/dev/null | head -n1 || true)
+  # Look up the running container via Docker-compatibility labels
+  # (com.docker.compose.*), which podman-compose has set since v1.0 and are
+  # present on all supported distro packages. The io.podman.compose.* labels
+  # were only added in v1.5.0 and are absent on e.g. Ubuntu 24.04 (v1.0.6).
+  # Fall back to io.podman.compose.* for any future-only installs.
+  cid=$(podman ps \
+    --filter "label=com.docker.compose.project=${PROJECT}" \
+    --filter "label=com.docker.compose.service=${svc}" \
+    --format '{{.Id}}' 2>/dev/null | head -n1 || true)
+  if [ -z "$cid" ]; then
+    cid=$(podman ps \
+      --filter "label=io.podman.compose.project=${PROJECT}" \
+      --filter "label=io.podman.compose.service=${svc}" \
+      --format '{{.Id}}' 2>/dev/null | head -n1 || true)
+  fi
   if [ -z "$cid" ]; then
     drift=1
     continue
