@@ -81,6 +81,7 @@ define podman_compose::user (
       command     => "/usr/bin/bash -c \"export XDG_RUNTIME_DIR=/run/user/\$(id -u); export HOME=${home}; /usr/bin/podman system migrate\"",
       refreshonly => true,
       user        => $user,
+      cwd         => $home,
       require     => Exec["start-user-manager-${user}"],
       subscribe   => [Exec["subuid-${user}"], Exec["subgid-${user}"]],
     }
