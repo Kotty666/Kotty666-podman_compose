@@ -1,0 +1,15 @@
+<%- |
+  Array[String[1]] $search_registries,
+| -%>
+# Managed by Puppet - DO NOT EDIT
+#
+# Podman has no implicit docker.io default (unlike Docker). Without an entry
+# here, short image names like "louislam/dockge:nightly" fail to resolve with
+# "no unqualified-search-registries are defined". This file provides that
+# default so unqualified image names resolve against the listed registries.
+
+unqualified-search-registries = [<%= $search_registries.map |$r| { "\"${r}\"" }.join(', ') %>]
+
+# Permissive so unqualified names resolve non-interactively (the default
+# "enforcing" mode can prompt, which breaks unattended Puppet/systemd runs).
+short-name-mode = "permissive"

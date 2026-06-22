@@ -248,10 +248,15 @@ define podman_compose::cron (
     # comparison.
     $registries.each |String $_server, Hash $_creds| {
       $_safe = regsubst($_server, '[^a-zA-Z0-9._-]', '_', 'G')
+      # Accept eyaml-decrypted plain strings as well as Sensitive values.
+      $_password = $_creds['password'] =~ Sensitive ? {
+        true    => $_creds['password'],
+        default => Sensitive($_creds['password']),
+      }
       ensure_resource('podman_compose::registry', "${_user}@${_safe}", {
         server   => $_server,
         username => $_creds['username'],
-        password => $_creds['password'],
+        password => $_password,
         user     => $_user,
         rootless => $rootless,
       })
