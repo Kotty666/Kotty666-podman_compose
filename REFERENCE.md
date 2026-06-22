@@ -460,6 +460,8 @@ The following parameters are available in the `podman_compose::project` defined 
 * [`service_timeout`](#-podman_compose--project--service_timeout)
 * [`extra_systemd_config`](#-podman_compose--project--extra_systemd_config)
 * [`registries`](#-podman_compose--project--registries)
+* [`manage_search_registries`](#-podman_compose--project--manage_search_registries)
+* [`search_registries`](#-podman_compose--project--search_registries)
 * [`verify_running_image`](#-podman_compose--project--verify_running_image)
 * [`recreate_strategy`](#-podman_compose--project--recreate_strategy)
 * [`manage_subid`](#-podman_compose--project--manage_subid)
@@ -581,6 +583,29 @@ Hash of registry server => {username, password} for `podman login`.
 Credentials are piped via stdin. Change detection via SHA256 sentinel.
 
 Default value: `{}`
+
+##### <a name="-podman_compose--project--manage_search_registries"></a>`manage_search_registries`
+
+Data type: `Boolean`
+
+Whether to manage the project user's containers `registries.conf` so that
+unqualified image names (e.g. 'louislam/dockge:nightly') resolve. Podman has
+no implicit docker.io default, so on a minimal host short names fail with
+"no unqualified-search-registries are defined". Defaults to true.
+
+Default value: `true`
+
+##### <a name="-podman_compose--project--search_registries"></a>`search_registries`
+
+Data type: `Array[String[1]]`
+
+Registries used to resolve unqualified image names, written to the user's
+registries.conf when manage_search_registries is true. Defaults to
+['docker.io']. Shared per user via ensure_resource, so all projects of the
+same user must agree on this value (or set manage_search_registries => false
+and manage registries.conf yourself).
+
+Default value: `['docker.io']`
 
 ##### <a name="-podman_compose--project--verify_running_image"></a>`verify_running_image`
 

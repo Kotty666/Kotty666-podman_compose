@@ -36,6 +36,17 @@
 # @param registries
 #   Hash of registry server => {username, password} for `podman login`.
 #   Credentials are piped via stdin. Change detection via SHA256 sentinel.
+# @param manage_search_registries
+#   Whether to manage the project user's containers `registries.conf` so that
+#   unqualified image names (e.g. 'louislam/dockge:nightly') resolve. Podman has
+#   no implicit docker.io default, so on a minimal host short names fail with
+#   "no unqualified-search-registries are defined". Defaults to true.
+# @param search_registries
+#   Registries used to resolve unqualified image names, written to the user's
+#   registries.conf when manage_search_registries is true. Defaults to
+#   ['docker.io']. Shared per user via ensure_resource, so all projects of the
+#   same user must agree on this value (or set manage_search_registries => false
+#   and manage registries.conf yourself).
 # @param verify_running_image
 #   On every Puppet run, compare each service's running container image
 #   digest with the desired image (after a quiet `pull`). On drift, run
@@ -97,6 +108,8 @@ define podman_compose::project (
   Integer[60]                         $service_timeout      = 300,
   Hash[String, String]                $extra_systemd_config = {},
   Podman_compose::Registries          $registries           = {},
+  Boolean                             $manage_search_registries = true,
+  Array[String[1]]                    $search_registries        = ['docker.io'],
   Boolean                             $verify_running_image = true,
   Podman_compose::Recreate_strategy   $recreate_strategy    = 'force-recreate',
   Boolean                             $manage_subid         = true,
@@ -275,6 +288,48 @@ define podman_compose::project (
         rootless => $rootless,
       })
       Podman_compose::Registry["${_user}@${_safe}"] -> File["${_compose_dir}/${compose_file_name}"]
+    }
+
+    # --- Search registries (unqualified-search-registries) ---
+    # Podman has no implicit docker.io default, so unqualified image names fail
+    # on a minimal host. Manage the project user's registries.conf so short
+    # names resolve. ensure_resource keeps it a single file per user even when
+    # several projects share the user; the ordering arrow (which may appear more
+    # than once) guarantees it lands before any pull/up runs, without clashing
+    # on ensure_resource's parameter comparison across projects.
+    if $manage_search_registries and ! empty($search_registries) {
+      $_conf_home = $rootless ? {
+        true  => "/home/${_user}",
+        false => '/root',
+      }
+      $_containers_conf_dir = "${_conf_home}/.config/containers"
+      $_registries_conf     = "${_containers_conf_dir}/registries.conf"
+
+      ensure_resource('file', "${_conf_home}/.config", {
+        ensure => directory,
+        owner  => $_user,
+        group  => $_group,
+        mode   => '0755',
+      })
+      ensure_resource('file', $_containers_conf_dir, {
+        ensure  => directory,
+        owner   => $_user,
+        group   => $_group,
+        mode    => '0755',
+        require => File["${_conf_home}/.config"],
+      })
+      ensure_resource('file', $_registries_conf, {
+        ensure  => file,
+        owner   => $_user,
+        group   => $_group,
+        mode    => '0644',
+        content => epp('podman_compose/registries.conf.epp', {
+          'search_registries' => $search_registries,
+        }),
+        require => File[$_containers_conf_dir],
+      })
+
+      File[$_registries_conf] -> File["${_compose_dir}/${compose_file_name}"]
     }
 
     # --- Directory & compose file ---

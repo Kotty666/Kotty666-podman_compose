@@ -130,6 +130,106 @@ describe 'podman_compose::project' do
         it { is_expected.to contain_podman_compose__registry('appuser@harbor.example') }
       end
 
+      context 'search registries (unqualified-search-registries)' do
+        context 'rootless default manages docker.io for the user' do
+          let(:params) do
+            {
+              'rootless'     => true,
+              'user'         => 'appuser',
+              'subuid_start' => 100_000,
+              'subgid_start' => 100_000,
+              'compose'      => { 'services' => { 'web' => { 'image' => 'nginx:1.27' } } },
+            }
+          end
+
+          it { is_expected.to compile.with_all_deps }
+
+          it 'writes registries.conf into the user home with docker.io' do
+            is_expected.to contain_file('/home/appuser/.config/containers/registries.conf')
+              .with_content(%r{unqualified-search-registries = \["docker\.io"\]})
+              .with_content(%r{short-name-mode = "permissive"})
+          end
+
+          it 'orders registries.conf before the compose file' do
+            is_expected.to contain_file('/home/appuser/.config/containers/registries.conf')
+              .that_comes_before('File[/home/appuser/compose/demo/compose.yml]')
+          end
+        end
+
+        context 'rootful manages /root registries.conf' do
+          let(:params) do
+            {
+              'rootless' => false,
+              'compose'  => { 'services' => { 'web' => { 'image' => 'nginx:1.27' } } },
+            }
+          end
+
+          it { is_expected.to compile.with_all_deps }
+          it { is_expected.to contain_file('/root/.config/containers/registries.conf') }
+        end
+
+        context 'custom search_registries list' do
+          let(:params) do
+            {
+              'rootless'          => true,
+              'user'              => 'appuser',
+              'subuid_start'      => 100_000,
+              'subgid_start'      => 100_000,
+              'search_registries' => ['docker.io', 'ghcr.io'],
+              'compose'           => { 'services' => { 'web' => { 'image' => 'nginx:1.27' } } },
+            }
+          end
+
+          it 'renders all registries in order' do
+            is_expected.to contain_file('/home/appuser/.config/containers/registries.conf')
+              .with_content(%r{unqualified-search-registries = \["docker\.io", "ghcr\.io"\]})
+          end
+        end
+
+        context 'manage_search_registries => false' do
+          let(:params) do
+            {
+              'rootless'                 => true,
+              'user'                     => 'appuser',
+              'subuid_start'             => 100_000,
+              'subgid_start'             => 100_000,
+              'manage_search_registries' => false,
+              'compose'                  => { 'services' => { 'web' => { 'image' => 'nginx:1.27' } } },
+            }
+          end
+
+          it { is_expected.to compile.with_all_deps }
+          it { is_expected.not_to contain_file('/home/appuser/.config/containers/registries.conf') }
+        end
+
+        context 'shared user across projects does not duplicate registries.conf' do
+          let(:pre_condition) do
+            <<~PP
+              include podman_compose
+              podman_compose::project { 'other':
+                rootless     => true,
+                user         => 'appuser',
+                subuid_start => 100000,
+                subgid_start => 100000,
+                compose      => { 'services' => { 'api' => { 'image' => 'busybox' } } },
+              }
+            PP
+          end
+          let(:params) do
+            {
+              'rootless'     => true,
+              'user'         => 'appuser',
+              'subuid_start' => 100_000,
+              'subgid_start' => 100_000,
+              'compose'      => { 'services' => { 'web' => { 'image' => 'nginx:1.27' } } },
+            }
+          end
+
+          it { is_expected.to compile.with_all_deps }
+          it { is_expected.to contain_file('/home/appuser/.config/containers/registries.conf') }
+        end
+      end
+
       context 'compose hash missing services' do
         let(:params) do
           {
