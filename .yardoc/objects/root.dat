@@ -1,5 +1,5 @@
 {:	rooto:"YARD::CodeObjects::RootObject:@childrenIC:&YARD::CodeObjects::CodeObjectList[o:4OpenvoxStrings::Yard::CodeObjects::DefinedTypes;IC;[	o:3OpenvoxStrings::Yard::CodeObjects::DefinedType:@statemento:@OpenvoxStrings::Yard::Parsers::Puppet::DefinedTypeStatement:
-@fileI"manifests/cron.pp:ET:@sourceI"Ã-define podman_compose::cron (
+@fileI"manifests/cron.pp:ET:@sourceI"Ÿ.define podman_compose::cron (
   Hash                                $compose,
   String[1]                           $on_calendar,
   Enum['present', 'absent']           $ensure                = 'present',
@@ -155,10 +155,15 @@
     # comparison.
     $registries.each |String $_server, Hash $_creds| {
       $_safe = regsubst($_server, '[^a-zA-Z0-9._-]', '_', 'G')
+      # Accept eyaml-decrypted plain strings as well as Sensitive values.
+      $_password = $_creds['password'] =~ Sensitive ? {
+        true    => $_creds['password'],
+        default => Sensitive($_creds['password']),
+      }
       ensure_resource('podman_compose::registry', "${_user}@${_safe}", {
         server   => $_server,
         username => $_creds['username'],
-        password => $_creds['password'],
+        password => $_password,
         user     => $_user,
         rootless => $rootless,
       })
@@ -807,7 +812,7 @@ Must not overlap with any other user's range on the same host.;T;I"subgid_st
 ;"I"
 param;F;#I"GNumber of subordinate GIDs allocated to this user (default 65536).;T;I"subgid_count;T;$[@|;@Po;!
 ;"I"api;F;#@M;0;$0;@P;%[ ;&@­;'0;@P;F;:@T;;i ;<@;=I"/puppet_defined_types::podman_compose::user;Fo;
-;o;;I"manifests/project.pp;T;I"õPdefine podman_compose::project (
+;o;;I"manifests/project.pp;T;I"ÑQdefine podman_compose::project (
   Hash                                $compose,
   Podman_compose::Ensure              $ensure               = 'running',
   Boolean                             $rootless             = true,
@@ -994,10 +999,15 @@ param;F;#I"GNumber of subordinate GIDs allocated to this user (default 65536).
 
     $registries.each |String $_server, Hash $_creds| {
       $_safe = regsubst($_server, '[^a-zA-Z0-9._-]', '_', 'G')
+      # Accept eyaml-decrypted plain strings as well as Sensitive values.
+      $_password = $_creds['password'] =~ Sensitive ? {
+        true    => $_creds['password'],
+        default => Sensitive($_creds['password']),
+      }
       ensure_resource('podman_compose::registry', "${_user}@${_safe}", {
         server   => $_server,
         username => $_creds['username'],
-        password => $_creds['password'],
+        password => $_password,
         user     => $_user,
         rootless => $rootless,
       })
@@ -2070,29 +2080,44 @@ podman_compose::cron_projects:
 ;"I"api;F;#I"private;T;0;$0;@ß;%[ ;&@ï;'0;@ß;F;:@ã;;i ;<@ ;=I",puppet_classes::podman_compose::install;F;(@ ;)IC;[ ;(@ ;*IC;[ ;(@ ;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[ ;3F;:puppet_classes;5;6;7;B; [ ;9{ ;IC;" ;T; [ ;%[ ;&@ÿ;'0;@ ;;i ;<@o:7OpenvoxStrings::Yard::CodeObjects::DataTypeAliases;IC;[	o:5OpenvoxStrings::Yard::CodeObjects::DataTypeAlias;o:BOpenvoxStrings::Yard::Parsers::Puppet::DataTypeAliasStatement;I"types/ensure.pp;T;I"APodman_compose::Ensure = Enum['running', 'stopped', 'absent';T;i;o;;F;i ;i:@alias_ofI")Enum['running', 'stopped', 'absent'];T;I"Podman_compose::Ensure;T;IC;" ;T;0;0;F; [o;!
 ;"I"summary;F;#I".Ensure state for a podman-compose project;T;0;$0;0;%[ ;&I"7@summary Ensure state for a podman-compose project;T;'0;M@;IC;[ ;(@;)IC;[ ;(@;*IC;[ ;(@;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@i;3T;:Podman_compose::Ensure;5;6;7;8; [ ;9{ ;IC;" ;T; [o;!
 ;"I"summary;F;#I".Ensure state for a podman-compose project;T;0;$0;@o;!
-;"I"api;F;#@M;0;$0;@;%[ ;&@#;'0;@;F;:@;;i ;<@;=I"5puppet_data_type_aliases::Podman_compose::Ensure;Fo;K;o;L;I"types/registries.pp;T;I"€Podman_compose::Registries = Hash[
+;"I"api;F;#@M;0;$0;@;%[ ;&@#;'0;@;F;:@;;i ;<@;=I"5puppet_data_type_aliases::Podman_compose::Ensure;Fo;K;o;L;I"types/registries.pp;T;I"”Podman_compose::Registries = Hash[
   String[1],
   Struct[{
     username => String[1],
-    password => Sensitive[String[1]],
-  }];T;i;o;;F;i ;i;MI"dHash[String[1], Struct[{
+    password => Variant[Sensitive[String[1]], String[1]],
+  }];T;i;o;;F;i ;i;MI"xHash[String[1], Struct[{
     username => String[1],
-    password => Sensitive[String[1]],
-  }]];T;I"Podman_compose::Registries;T;IC;" ;T;0;0;F; [o;!
+    password => Variant[Sensitive[String[1]], String[1]],
+  }]];T;I"Podman_compose::Registries;T;IC;"hThe password may be supplied either as a `Sensitive[String]` (preferred) or
+as a plain `String`. The latter is accepted because hiera-eyaml decrypts
+`ENC[...]` blocks into ordinary strings unless a `lookup_options`
+`convert_to: 'Sensitive'` is configured. project.pp / cron.pp normalize the
+value to `Sensitive` before handing it to `podman_compose::registry`.;T;0;0;F; [o;!
 ;"I"summary;F;#I"(Registry credentials hash structure;T;0;$0;0o;!
-;"I"example;F;#I"¸{
+;"I"example;F;#I"­{
   'registry.example.com' => { 'username' => 'deploy', 'password' => Sensitive('secret') },
-  'ghcr.io'              => { 'username' => 'bot',    'password' => Sensitive('token') },
-};T;I" ;T;$0;0;%[ ;&I"ö@summary Registry credentials hash structure
+  'ghcr.io'              => { 'username' => 'bot',    'password' => 'token' },
+};T;I" ;T;$0;0;%[ ;&I"V@summary Registry credentials hash structure
+
+The password may be supplied either as a `Sensitive[String]` (preferred) or
+as a plain `String`. The latter is accepted because hiera-eyaml decrypts
+`ENC[...]` blocks into ordinary strings unless a `lookup_options`
+`convert_to: 'Sensitive'` is configured. project.pp / cron.pp normalize the
+value to `Sensitive` before handing it to `podman_compose::registry`.
+
 @example
   {
     'registry.example.com' => { 'username' => 'deploy', 'password' => Sensitive('secret') },
-    'ghcr.io'              => { 'username' => 'bot',    'password' => Sensitive('token') },
-  };T;'0;M@>;IC;[ ;(@9;)IC;[ ;(@9;*IC;[ ;(@9;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@;i;3T;:Podman_compose::Registries;5;6;7;8; [ ;9{ ;IC;" ;T; [o;!
+    'ghcr.io'              => { 'username' => 'bot',    'password' => 'token' },
+  };T;'0;M@>;IC;[ ;(@9;)IC;[ ;(@9;*IC;[ ;(@9;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@;i;3T;:Podman_compose::Registries;5;6;7;8; [ ;9{ ;IC;"hThe password may be supplied either as a `Sensitive[String]` (preferred) or
+as a plain `String`. The latter is accepted because hiera-eyaml decrypts
+`ENC[...]` blocks into ordinary strings unless a `lookup_options`
+`convert_to: 'Sensitive'` is configured. project.pp / cron.pp normalize the
+value to `Sensitive` before handing it to `podman_compose::registry`.;T; [o;!
 ;"I"summary;F;#I"(Registry credentials hash structure;T;0;$0;@9o;!
-;"I"example;F;#I"¸{
+;"I"example;F;#I"­{
   'registry.example.com' => { 'username' => 'deploy', 'password' => Sensitive('secret') },
-  'ghcr.io'              => { 'username' => 'bot',    'password' => Sensitive('token') },
+  'ghcr.io'              => { 'username' => 'bot',    'password' => 'token' },
 };T;I" ;T;$0;@9o;!
 ;"I"api;F;#@M;0;$0;@9;%[ ;&@J;'0;@9;F;:@=;;i ;<@;=I"9puppet_data_type_aliases::Podman_compose::Registries;Fo;K;o;L;I"types/install_method.pp;T;I";Podman_compose::Install_method = Enum['package', 'pip';T;i;o;;F;i ;i;MI"Enum['package', 'pip'];T;I"#Podman_compose::Install_method;T;IC;" ;T;0;0;F; [o;!
 ;"I"summary;F;#I"&Install method for podman-compose;T;0;$0;0;%[ ;&I"/@summary Install method for podman-compose;T;'0;M@i;IC;[ ;(@d;)IC;[ ;(@d;*IC;[ ;(@d;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@fi;3T;:#Podman_compose::Install_method;5;6;7;8; [ ;9{ ;IC;" ;T; [o;!

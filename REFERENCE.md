@@ -904,7 +904,11 @@ Alias of `Enum['rolling', 'force-recreate', 'down-up']`
 
 ### <a name="Podman_compose--Registries"></a>`Podman_compose::Registries`
 
-Registry credentials hash structure
+The password may be supplied either as a `Sensitive[String]` (preferred) or
+as a plain `String`. The latter is accepted because hiera-eyaml decrypts
+`ENC[...]` blocks into ordinary strings unless a `lookup_options`
+`convert_to: 'Sensitive'` is configured. project.pp / cron.pp normalize the
+value to `Sensitive` before handing it to `podman_compose::registry`.
 
 #### Examples
 
@@ -913,7 +917,7 @@ Registry credentials hash structure
 ```puppet
 {
   'registry.example.com' => { 'username' => 'deploy', 'password' => Sensitive('secret') },
-  'ghcr.io'              => { 'username' => 'bot',    'password' => Sensitive('token') },
+  'ghcr.io'              => { 'username' => 'bot',    'password' => 'token' },
 }
 ```
 
@@ -922,7 +926,7 @@ Alias of
 ```puppet
 Hash[String[1], Struct[{
     username => String[1],
-    password => Sensitive[String[1]],
+    password => Variant[Sensitive[String[1]], String[1]],
   }]]
 ```
 
