@@ -249,8 +249,25 @@ Setting `ensure: absent` will:
 | `service_timeout` | `Integer[60]` | `300` | Systemd start timeout |
 | `extra_systemd_config` | `Hash` | `{}` | Extra `[Service]` directives |
 | `registries` | `Hash` | `{}` | `server => {username, password}` for `podman login` |
+| `manage_search_registries` | `Boolean` | `true` | Manage the user's `registries.conf` so unqualified image names resolve (Podman has no implicit docker.io default) |
+| `search_registries` | `Array[String]` | `['docker.io']` | Registries for resolving unqualified image names; shared per user |
 | `verify_running_image` | `Boolean` | `true` | On each Puppet run, compare running image digest vs desired and roll affected services if drifted |
 | `recreate_strategy` | `Enum['rolling','force-recreate','down-up']` | `'force-recreate'` | How containers are re-created on compose/`.env` change (see below) |
+
+### Unqualified image names (short names)
+
+Unlike Docker, Podman has no implicit `docker.io` default. On a minimal host an
+image reference like `louislam/dockge:nightly` fails with
+*"no unqualified-search-registries are defined"*. By default this module manages
+the project user's `~/.config/containers/registries.conf` (rootful: `/root/...`)
+with `unqualified-search-registries = ["docker.io"]` and
+`short-name-mode = "permissive"` so short names resolve unattended.
+
+Set `manage_search_registries: false` to manage that file yourself, or override
+`search_registries` (e.g. `['docker.io', 'ghcr.io']`). The file is shared per
+user via `ensure_resource`, so all projects of the same user must agree on the
+value. This is independent of the `registries` parameter, which only performs
+`podman login`.
 
 ## How it works
 
