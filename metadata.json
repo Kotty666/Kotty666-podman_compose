@@ -1,6 +1,6 @@
 {
   "name": "Kotty666-podman_compose",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "author": "Kotty666",
   "summary": "Manage podman-compose projects via Hiera-driven compose files and systemd services",
   "license": "Apache-2.0",
