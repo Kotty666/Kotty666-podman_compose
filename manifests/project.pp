@@ -49,10 +49,12 @@
 #   and manage registries.conf yourself).
 # @param verify_running_image
 #   On every Puppet run, compare each service's running container image
-#   digest with the desired image (after a quiet `pull`). On drift, run
-#   `podman-compose up -d --remove-orphans` so only affected services are
-#   recreated. Detects manual changes, registry digest updates behind a
-#   stable tag (e.g. ':latest'), and missing containers.
+#   digest with the desired image (after a quiet `pull`). On drift, apply the
+#   configured `recreate_strategy` (default 'force-recreate') so affected
+#   services actually pick up the new image — a bare `up -d` does not recreate
+#   a running container when only the image digest behind a stable tag changed.
+#   Detects manual changes, registry digest updates behind a stable tag
+#   (e.g. ':latest'), and missing containers.
 # @param recreate_strategy
 #   How containers are (re)created when the compose file or .env change.
 #   Defaults to 'force-recreate' so env changes are always applied cleanly
@@ -571,6 +573,7 @@ define podman_compose::project (
           content => epp('podman_compose/verify_images.sh.epp', {
             'compose_binary'    => $podman_compose::compose_binary,
             'compose_file_name' => $compose_file_name,
+            'recreate_ops'      => $_recreate_ops,
           }),
         }
 

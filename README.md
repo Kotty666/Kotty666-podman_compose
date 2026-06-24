@@ -308,9 +308,12 @@ Update flow:
    the helper script does a quiet `podman-compose pull`, then for each service
    compares the running container's image digest (`podman inspect -f '{{.Image}}'`)
    to the desired image's digest (`podman image inspect -f '{{.Id}}'`). If any
-   service has drifted, `podman-compose up -d --remove-orphans` is run. This
-   catches registry updates behind a stable tag like `:latest` and any out-of-band
-   changes.
+   service has drifted, the configured `recreate_strategy` is applied (default
+   `force-recreate`). A bare `up -d` would *not* recreate a running container when
+   only the image digest behind a stable tag like `:latest` changed —
+   podman-compose treats the service as already up — so `force-recreate` is needed
+   to actually swap in the new image. This catches registry updates behind a
+   stable tag and any out-of-band changes.
 
 ## Systemd Management
 
