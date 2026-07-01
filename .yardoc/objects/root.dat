@@ -812,7 +812,7 @@ Must not overlap with any other user's range on the same host.;T;I"subgid_st
 ;"I"
 param;F;#I"GNumber of subordinate GIDs allocated to this user (default 65536).;T;I"subgid_count;T;$[@|;@Po;!
 ;"I"api;F;#@M;0;$0;@P;%[ ;&@­;'0;@P;F;:@T;;i ;<@;=I"/puppet_defined_types::podman_compose::user;Fo;
-;o;;I"manifests/project.pp;T;I"ÑQdefine podman_compose::project (
+;o;;I"manifests/project.pp;T;I"Rdefine podman_compose::project (
   Hash                                $compose,
   Podman_compose::Ensure              $ensure               = 'running',
   Boolean                             $rootless             = true,
@@ -1290,6 +1290,7 @@ param;F;#I"GNumber of subordinate GIDs allocated to this user (default 65536).
           content => epp('podman_compose/verify_images.sh.epp', {
             'compose_binary'    => $podman_compose::compose_binary,
             'compose_file_name' => $compose_file_name,
+            'recreate_ops'      => $_recreate_ops,
           }),
         }
 
@@ -1323,7 +1324,7 @@ param;F;#I"GNumber of subordinate GIDs allocated to this user (default 65536).
       }
     }
   }
-};T;ie;o;;F;i ;id;[o;;I"compose;T;I"	Hash;To;;I"ensure;T;I"Podman_compose::Ensure;T;I"'running';To;;I"rootless;T;I"Boolean;T;I"	true;To;;I"	user;T;I"Optional[String[1]];T;I"
+};T;ig;o;;F;i ;if;[o;;I"compose;T;I"	Hash;To;;I"ensure;T;I"Podman_compose::Ensure;T;I"'running';To;;I"rootless;T;I"Boolean;T;I"	true;To;;I"	user;T;I"Optional[String[1]];T;I"
 undef;To;;I"
 group;T;I"Optional[String[1]];T;I"
 undef;To;;I"manage_user;T;I"Boolean;T;I"	true;To;;I"compose_dir;T;I"#Optional[Stdlib::Absolutepath];T;I"
@@ -1380,11 +1381,13 @@ registries.conf when manage_search_registries is true. Defaults to
 same user must agree on this value (or set manage_search_registries => false
 and manage registries.conf yourself).;T;I"search_registries;T;$0;0o;!
 ;"I"
-param;F;#I"FOn every Puppet run, compare each service's running container image
-digest with the desired image (after a quiet `pull`). On drift, run
-`podman-compose up -d --remove-orphans` so only affected services are
-recreated. Detects manual changes, registry digest updates behind a
-stable tag (e.g. ':latest'), and missing containers.;T;I"verify_running_image;T;$0;0o;!
+param;F;#I"ÚOn every Puppet run, compare each service's running container image
+digest with the desired image (after a quiet `pull`). On drift, apply the
+configured `recreate_strategy` (default 'force-recreate') so affected
+services actually pick up the new image â€” a bare `up -d` does not recreate
+a running container when only the image digest behind a stable tag changed.
+Detects manual changes, registry digest updates behind a stable tag
+(e.g. ':latest'), and missing containers.;T;I"verify_running_image;T;$0;0o;!
 ;"I"
 param;F;#I"ÈHow containers are (re)created when the compose file or .env change.
 Defaults to 'force-recreate' so env changes are always applied cleanly
@@ -1421,7 +1424,7 @@ param;F;#I"NNumber of subordinate GIDs allocated to the project user (default 
           volumes:
             - "/var/run/podman/podman.sock:/var/run/docker.sock:ro"
             - "./config:/etc/traefik:ro"
-          restart: unless-stopped;T;I"Hiera definition;T;$0;0;%[ ;&I"Ø@summary Manage a single podman-compose project
+          restart: unless-stopped;T;I"Hiera definition;T;$0;0;%[ ;&I"p@summary Manage a single podman-compose project
 
 Creates the compose directory, renders the compose file from a Hash,
 optionally manages an .env file, and sets up a systemd service to
@@ -1472,10 +1475,12 @@ keep the project running.
   and manage registries.conf yourself).
 @param verify_running_image
   On every Puppet run, compare each service's running container image
-  digest with the desired image (after a quiet `pull`). On drift, run
-  `podman-compose up -d --remove-orphans` so only affected services are
-  recreated. Detects manual changes, registry digest updates behind a
-  stable tag (e.g. ':latest'), and missing containers.
+  digest with the desired image (after a quiet `pull`). On drift, apply the
+  configured `recreate_strategy` (default 'force-recreate') so affected
+  services actually pick up the new image â€” a bare `up -d` does not recreate
+  a running container when only the image digest behind a stable tag changed.
+  Detects manual changes, registry digest updates behind a stable tag
+  (e.g. ':latest'), and missing containers.
 @param recreate_strategy
   How containers are (re)created when the compose file or .env change.
   Defaults to 'force-recreate' so env changes are always applied cleanly
@@ -1516,7 +1521,7 @@ keep the project running.
               - "./config:/etc/traefik:ro"
             restart: unless-stopped
 ;T;'0;[[@0[@
-@[@@[@@[@@[@@[@@ [@"@$[@&@([@*@,[@.@0[@2@4[@6@8[@:@<[@>@@[@B@D[@F@H[@J@L[@N@P[@R@T[@V@X[@Z@\[@^@`;IC;[ ;(@ ;)IC;[ ;(@ ;*IC;[ ;(@ ;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@ie;3T;:podman_compose::project;5;6;7;8; [ ;9{ ;IC;" Creates the compose directory, renders the compose file from a Hash,
+@[@@[@@[@@[@@[@@ [@"@$[@&@([@*@,[@.@0[@2@4[@6@8[@:@<[@>@@[@B@D[@F@H[@J@L[@N@P[@R@T[@V@X[@Z@\[@^@`;IC;[ ;(@ ;)IC;[ ;(@ ;*IC;[ ;(@ ;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@ig;3T;:podman_compose::project;5;6;7;8; [ ;9{ ;IC;" Creates the compose directory, renders the compose file from a Hash,
 optionally manages an .env file, and sets up a systemd service to
 keep the project running.;T; [o;!
 ;"I"summary;F;#I"+Manage a single podman-compose project;T;0;$0;@ o;!
@@ -1565,11 +1570,13 @@ registries.conf when manage_search_registries is true. Defaults to
 same user must agree on this value (or set manage_search_registries => false
 and manage registries.conf yourself).;T;I"search_registries;T;$[@C;@ o;!
 ;"I"
-param;F;#I"FOn every Puppet run, compare each service's running container image
-digest with the desired image (after a quiet `pull`). On drift, run
-`podman-compose up -d --remove-orphans` so only affected services are
-recreated. Detects manual changes, registry digest updates behind a
-stable tag (e.g. ':latest'), and missing containers.;T;I"verify_running_image;T;$[@G;@ o;!
+param;F;#I"ÚOn every Puppet run, compare each service's running container image
+digest with the desired image (after a quiet `pull`). On drift, apply the
+configured `recreate_strategy` (default 'force-recreate') so affected
+services actually pick up the new image â€” a bare `up -d` does not recreate
+a running container when only the image digest behind a stable tag changed.
+Detects manual changes, registry digest updates behind a stable tag
+(e.g. ':latest'), and missing containers.;T;I"verify_running_image;T;$[@G;@ o;!
 ;"I"
 param;F;#I"ÈHow containers are (re)created when the compose file or .env change.
 Defaults to 'force-recreate' so env changes are always applied cleanly
