@@ -303,6 +303,38 @@ describe 'podman_compose::project' do
               .with_command(%r{down && .* up -d --remove-orphans})
           end
         end
+
+        context 'drift verify script uses the recreate strategy' do
+          let(:script) { '/opt/compose/demo/.puppet-verify-images.sh' }
+
+          context 'default force-recreate' do
+            let(:params) { base }
+
+            it 'force-recreates on drift so image-only changes are applied' do
+              is_expected.to contain_file(script)
+                .with_content(%r{up -d --force-recreate --remove-orphans})
+            end
+          end
+
+          context 'rolling' do
+            let(:params) { base.merge('recreate_strategy' => 'rolling') }
+
+            it 'uses a plain up -d on drift' do
+              content = catalogue.resource('File', script)[:content]
+              expect(content).to match(%r{up -d --remove-orphans})
+              expect(content).not_to match(%r{--force-recreate})
+            end
+          end
+
+          context 'down-up' do
+            let(:params) { base.merge('recreate_strategy' => 'down-up') }
+
+            it 'tears down then up on drift' do
+              is_expected.to contain_file(script)
+                .with_content(%r{down && .* up -d --remove-orphans})
+            end
+          end
+        end
       end
 
       context 'recreate_strategy (rootless)' do

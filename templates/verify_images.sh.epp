@@ -1,6 +1,7 @@
 <%- |
   Stdlib::Absolutepath $compose_binary,
   String               $compose_file_name,
+  String               $recreate_ops,
 | -%>
 #!/bin/bash
 # Managed by Puppet — DO NOT EDIT
@@ -106,6 +107,11 @@ if [ "$ACTION" = "check" ]; then
 fi
 
 if [ "$drift" -eq 1 ]; then
-  exec "$COMPOSE_BIN" -f "$COMPOSE_FILE" up -d --remove-orphans
+  # Bring the drifted services back in sync using the same recreate strategy
+  # as the compose/.env change trigger. A bare `up -d` does NOT recreate a
+  # running container when only the image digest behind a stable tag (e.g.
+  # `:latest`) changed — podman-compose treats the service as "already up".
+  # The strategy default (`force-recreate`) ensures the new image is applied.
+  exec bash -c "<%= $recreate_ops %>"
 fi
 exit 0

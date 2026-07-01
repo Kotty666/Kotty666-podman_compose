@@ -612,10 +612,12 @@ Default value: `['docker.io']`
 Data type: `Boolean`
 
 On every Puppet run, compare each service's running container image
-digest with the desired image (after a quiet `pull`). On drift, run
-`podman-compose up -d --remove-orphans` so only affected services are
-recreated. Detects manual changes, registry digest updates behind a
-stable tag (e.g. ':latest'), and missing containers.
+digest with the desired image (after a quiet `pull`). On drift, apply the
+configured `recreate_strategy` (default 'force-recreate') so affected
+services actually pick up the new image — a bare `up -d` does not recreate
+a running container when only the image digest behind a stable tag changed.
+Detects manual changes, registry digest updates behind a stable tag
+(e.g. ':latest'), and missing containers.
 
 Default value: `true`
 
