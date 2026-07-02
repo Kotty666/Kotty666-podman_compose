@@ -6,6 +6,17 @@ describe 'podman_compose::project' do
   let(:title) { 'demo' }
   let(:pre_condition) { 'include podman_compose' }
 
+  def rootful_compose_params
+    {
+      'rootless' => false,
+      'compose'  => { 'services' => { 'web' => { 'image' => 'nginx:1.27' } } },
+    }
+  end
+
+  def verify_images_script
+    '/opt/compose/demo/.puppet-verify-images.sh'
+  end
+
   on_supported_os.each do |os, os_facts|
     context "on #{os}" do
       let(:facts) { os_facts }
@@ -267,15 +278,8 @@ describe 'podman_compose::project' do
       end
 
       context 'recreate_strategy (rootful)' do
-        let(:base) do
-          {
-            'rootless' => false,
-            'compose'  => { 'services' => { 'web' => { 'image' => 'nginx:1.27' } } },
-          }
-        end
-
         context 'default is force-recreate' do
-          let(:params) { base }
+          let(:params) { rootful_compose_params }
 
           it { is_expected.to compile.with_all_deps }
 
@@ -286,7 +290,7 @@ describe 'podman_compose::project' do
         end
 
         context 'rolling' do
-          let(:params) { base.merge('recreate_strategy' => 'rolling') }
+          let(:params) { rootful_compose_params.merge('recreate_strategy' => 'rolling') }
 
           it 'uses a plain up -d without force-recreate' do
             cmd = catalogue.resource('Exec', 'podman-compose-restart-demo')[:command]
@@ -296,7 +300,7 @@ describe 'podman_compose::project' do
         end
 
         context 'down-up' do
-          let(:params) { base.merge('recreate_strategy' => 'down-up') }
+          let(:params) { rootful_compose_params.merge('recreate_strategy' => 'down-up') }
 
           it 'tears the project down then up so networks are re-created' do
             is_expected.to contain_exec('podman-compose-restart-demo')
@@ -305,32 +309,30 @@ describe 'podman_compose::project' do
         end
 
         context 'drift verify script uses the recreate strategy' do
-          let(:script) { '/opt/compose/demo/.puppet-verify-images.sh' }
-
           context 'default force-recreate' do
-            let(:params) { base }
+            let(:params) { rootful_compose_params }
 
             it 'force-recreates on drift so image-only changes are applied' do
-              is_expected.to contain_file(script)
+              is_expected.to contain_file(verify_images_script)
                 .with_content(%r{up -d --force-recreate --remove-orphans})
             end
           end
 
           context 'rolling' do
-            let(:params) { base.merge('recreate_strategy' => 'rolling') }
+            let(:params) { rootful_compose_params.merge('recreate_strategy' => 'rolling') }
 
             it 'uses a plain up -d on drift' do
-              content = catalogue.resource('File', script)[:content]
+              content = catalogue.resource('File', verify_images_script)[:content]
               expect(content).to match(%r{up -d --remove-orphans})
               expect(content).not_to match(%r{--force-recreate})
             end
           end
 
           context 'down-up' do
-            let(:params) { base.merge('recreate_strategy' => 'down-up') }
+            let(:params) { rootful_compose_params.merge('recreate_strategy' => 'down-up') }
 
             it 'tears down then up on drift' do
-              is_expected.to contain_file(script)
+              is_expected.to contain_file(verify_images_script)
                 .with_content(%r{down && .* up -d --remove-orphans})
             end
           end
