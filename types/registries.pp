@@ -9,12 +9,18 @@
 # @example
 #   {
 #     'registry.example.com' => { 'username' => 'deploy', 'password' => Sensitive('secret') },
-#     'ghcr.io'              => { 'username' => 'bot',    'password' => 'token' },
+#     'ghcr.io'              => { 'username' => 'bot',    'password' => 'token',
+#                                 'proxy' => { 'HTTPS_PROXY' => 'http://proxy:3128' } },
 #   }
+#
+# The optional `proxy` hash is passed through to `podman_compose::registry`'s
+# `proxy_env` so the login can reach a registry that is only accessible through
+# a forward proxy.
 type Podman_compose::Registries = Hash[
   String[1],
   Struct[{
-    username => String[1],
-    password => Variant[Sensitive[String[1]], String[1]],
+    username           => String[1],
+    password           => Variant[Sensitive[String[1]], String[1]],
+    Optional[proxy]    => Hash[String[1], String[1]],
   }]
 ]

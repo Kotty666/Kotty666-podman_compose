@@ -24,6 +24,14 @@
 # @param env_secrets
 #   Optional Hash of sensitive KEY=VALUE pairs merged into .env.
 #   Values should come from Hiera eyaml or similar.
+# @param proxy_env
+#   HTTP(S) proxy environment variables (e.g.
+#   { 'HTTP_PROXY' => 'http://proxy:3128', 'HTTPS_PROXY' => ..., 'NO_PROXY' => ... })
+#   applied to every process that pulls images: the systemd unit (ExecStartPre
+#   pull / ExecStart up), the rolling-update exec and the drift-verify exec.
+#   Also used as the default proxy for auto-created `registries` logins.
+#   Empty hash (default) = no proxy. Independent of `env_vars`, which only
+#   reaches the containers at runtime via the .env file.
 # @param pull_on_start
 #   Pull images before (re)starting the service.
 # @param compose_file_name
@@ -105,6 +113,7 @@ define podman_compose::project (
   Optional[Stdlib::Absolutepath]      $compose_dir          = undef,
   Hash[String[1], String]             $env_vars             = {},
   Hash[String[1], Sensitive[String]]  $env_secrets          = {},
+  Hash[String[1], String[1]]          $proxy_env            = {},
   Boolean                             $pull_on_start        = true,
   String[1]                           $compose_file_name    = 'compose.yml',
   Integer[60]                         $service_timeout      = 300,
@@ -140,6 +149,11 @@ define podman_compose::project (
   }
 
   $_service_name = "podman-compose-${name}"
+
+  # Proxy vars as a `KEY=value` array for Puppet exec `environment` (the
+  # rolling-update and drift-verify execs run outside systemd, so they don't
+  # inherit the unit's Environment= and need the proxy injected directly).
+  $_proxy_arr = $proxy_env.map |$k, $v| { "${k}=${v}" }
 
   # Compose sub-command(s) run by the rolling-update trigger when the compose
   # file or .env change. A bare `up -d` relies on podman-compose's own change
@@ -288,11 +302,12 @@ define podman_compose::project (
         default => Sensitive($_creds['password']),
       }
       ensure_resource('podman_compose::registry', "${_user}@${_safe}", {
-        server   => $_server,
-        username => $_creds['username'],
-        password => $_password,
-        user     => $_user,
-        rootless => $rootless,
+        server    => $_server,
+        username  => $_creds['username'],
+        password  => $_password,
+        user      => $_user,
+        rootless  => $rootless,
+        proxy_env => pick_default($_creds['proxy'], $proxy_env),
       })
       Podman_compose::Registry["${_user}@${_safe}"] -> File["${_compose_dir}/${compose_file_name}"]
     }
@@ -415,6 +430,7 @@ define podman_compose::project (
           'pull_on_start'        => $pull_on_start,
           'service_timeout'      => $service_timeout,
           'extra_systemd_config' => $extra_systemd_config,
+          'proxy_env'            => $proxy_env,
         }),
         notify  => Exec["systemd-user-reload-${name}"],
         require => Exec["mkdir-systemd-user-${name}"],
@@ -473,6 +489,7 @@ define podman_compose::project (
         command     => "${_scu} ${_recreate_ops}'",
         cwd         => $_compose_dir,
         user        => $_user,
+        environment => $_proxy_arr,
         onlyif      => $_bus_check,
         refreshonly => true,
         require     => Exec["systemd-user-enable-${name}"],
@@ -493,6 +510,7 @@ define podman_compose::project (
           'pull_on_start'        => $pull_on_start,
           'service_timeout'      => $service_timeout,
           'extra_systemd_config' => $extra_systemd_config,
+          'proxy_env'            => $proxy_env,
         }),
         notify  => Exec["systemctl-daemon-reload-${name}"],
       }
@@ -527,6 +545,7 @@ define podman_compose::project (
         command     => "/usr/bin/bash -c '${_recreate_ops}'",
         cwd         => $_compose_dir,
         path        => ['/usr/local/bin', '/usr/bin', '/bin'],
+        environment => $_proxy_arr,
         refreshonly => true,
         require     => Service[$_service_name],
       }
@@ -579,12 +598,13 @@ define podman_compose::project (
 
         if $rootless {
           exec { "podman-compose-verify-${name}":
-            command => "${_scu} ${_compose_dir}/.puppet-verify-images.sh update'",
-            unless  => "${_scu} ${_compose_dir}/.puppet-verify-images.sh check'",
-            cwd     => $_compose_dir,
-            user    => $_user,
-            onlyif  => $_bus_check,
-            require => [
+            command     => "${_scu} ${_compose_dir}/.puppet-verify-images.sh update'",
+            unless      => "${_scu} ${_compose_dir}/.puppet-verify-images.sh check'",
+            cwd         => $_compose_dir,
+            user        => $_user,
+            environment => $_proxy_arr,
+            onlyif      => $_bus_check,
+            require     => [
               File["${_compose_dir}/.puppet-images.txt"],
               File["${_compose_dir}/.puppet-verify-images.sh"],
               File["${_compose_dir}/${compose_file_name}"],
@@ -593,11 +613,12 @@ define podman_compose::project (
           }
         } else {
           exec { "podman-compose-verify-${name}":
-            command => "${_compose_dir}/.puppet-verify-images.sh update",
-            unless  => "${_compose_dir}/.puppet-verify-images.sh check",
-            cwd     => $_compose_dir,
-            path    => ['/usr/local/bin', '/usr/bin', '/bin'],
-            require => [
+            command     => "${_compose_dir}/.puppet-verify-images.sh update",
+            unless      => "${_compose_dir}/.puppet-verify-images.sh check",
+            cwd         => $_compose_dir,
+            path        => ['/usr/local/bin', '/usr/bin', '/bin'],
+            environment => $_proxy_arr,
+            require     => [
               File["${_compose_dir}/.puppet-images.txt"],
               File["${_compose_dir}/.puppet-verify-images.sh"],
               Service[$_service_name],

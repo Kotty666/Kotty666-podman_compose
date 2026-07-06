@@ -6,6 +6,7 @@
   Boolean               $pull_on_start,
   Integer               $service_timeout,
   Hash[String, String]  $extra_systemd_config,
+  Hash[String, String]  $proxy_env,
 | -%>
 # Managed by Puppet - DO NOT EDIT
 # podman-compose project: <%= $project_name %> (rootless)
@@ -19,6 +20,9 @@ After=default.target
 Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=<%= $compose_dir %>
+<% $proxy_env.each |String $key, String $value| { -%>
+Environment="<%= $key %>=<%= $value %>"
+<% } -%>
 <% if $pull_on_start { -%>
 ExecStartPre=<%= $compose_binary %> -f <%= $compose_file_name %> pull
 <% } -%>
