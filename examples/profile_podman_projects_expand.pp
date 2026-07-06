@@ -25,7 +25,9 @@
 # @param replacement
 #   Real registry FQDN to substitute in.
 # @param proxy_env
-#   Hash of proxy env vars to merge into `env_vars` (empty hash = no-op).
+#   Hash of proxy env vars. Merged into `env_vars` (container runtime) *and*
+#   passed through as the `proxy_env` parameter so image pull / registry login
+#   traverse the proxy. Empty hash = no-op.
 #
 # @return [Hash] the rewritten hash, ready to splat into the define.
 #
@@ -75,11 +77,16 @@ function profile::podman_projects::expand(
     default => profile::podman_projects::expand_splat($_compose_re, $_env),
   }
 
+  # proxy_env is passed as a first-class parameter so it reaches the image
+  # pull / login processes (systemd unit Environment=, registry login,
+  # drift-verify), not just the containers' runtime .env. Empty hash is fine —
+  # project/cron default to no proxy.
   $_overrides = {
     'compose'     => $_compose,
     'registries'  => $_regs,
     'env_secrets' => $_secrets,
     'env_vars'    => $_env,
+    'proxy_env'   => $proxy_env,
   }.filter |$k, $v| { $v != undef }
 
   $data + $_overrides

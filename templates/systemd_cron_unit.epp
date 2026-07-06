@@ -7,6 +7,7 @@
   Integer               $service_timeout,
   Hash[String, String]  $extra_systemd_config,
   Optional[String]      $run_service,
+  Hash[String, String]  $proxy_env,
 | -%>
 # Managed by Puppet - DO NOT EDIT
 # podman-compose scheduled job: <%= $project_name %>
@@ -22,6 +23,9 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 WorkingDirectory=<%= $compose_dir %>
+<% $proxy_env.each |String $key, String $value| { -%>
+Environment="<%= $key %>=<%= $value %>"
+<% } -%>
 # Tear down any leftovers from a prior (possibly failed) run so config/image
 # changes always take effect — equivalent to a forced recreate without
 # touching named volumes.

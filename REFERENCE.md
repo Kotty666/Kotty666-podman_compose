@@ -242,6 +242,7 @@ The following parameters are available in the `podman_compose::cron` defined typ
 * [`compose_dir`](#-podman_compose--cron--compose_dir)
 * [`env_vars`](#-podman_compose--cron--env_vars)
 * [`env_secrets`](#-podman_compose--cron--env_secrets)
+* [`proxy_env`](#-podman_compose--cron--proxy_env)
 * [`run_service`](#-podman_compose--cron--run_service)
 * [`pull_before_run`](#-podman_compose--cron--pull_before_run)
 * [`on_boot_sec`](#-podman_compose--cron--on_boot_sec)
@@ -327,6 +328,19 @@ Default value: `{}`
 Data type: `Hash[String[1], Sensitive[String]]`
 
 Sensitive KEY=VALUE pairs merged into .env (eyaml-friendly).
+
+Default value: `{}`
+
+##### <a name="-podman_compose--cron--proxy_env"></a>`proxy_env`
+
+Data type: `Hash[String[1], String[1]]`
+
+HTTP(S) proxy environment variables (e.g.
+{ 'HTTP_PROXY' => 'http://proxy:3128', 'HTTPS_PROXY' => ..., 'NO_PROXY' => ... })
+set on the scheduled systemd unit so `pull` / `up` / `run` can reach the
+registry through a forward proxy. Also the default proxy for auto-created
+`registries` logins. Empty hash (default) = no proxy. Independent of
+`env_vars`, which only reaches containers at runtime via the .env file.
 
 Default value: `{}`
 
@@ -455,6 +469,7 @@ The following parameters are available in the `podman_compose::project` defined 
 * [`compose_dir`](#-podman_compose--project--compose_dir)
 * [`env_vars`](#-podman_compose--project--env_vars)
 * [`env_secrets`](#-podman_compose--project--env_secrets)
+* [`proxy_env`](#-podman_compose--project--proxy_env)
 * [`pull_on_start`](#-podman_compose--project--pull_on_start)
 * [`compose_file_name`](#-podman_compose--project--compose_file_name)
 * [`service_timeout`](#-podman_compose--project--service_timeout)
@@ -539,6 +554,20 @@ Data type: `Hash[String[1], Sensitive[String]]`
 
 Optional Hash of sensitive KEY=VALUE pairs merged into .env.
 Values should come from Hiera eyaml or similar.
+
+Default value: `{}`
+
+##### <a name="-podman_compose--project--proxy_env"></a>`proxy_env`
+
+Data type: `Hash[String[1], String[1]]`
+
+HTTP(S) proxy environment variables (e.g.
+{ 'HTTP_PROXY' => 'http://proxy:3128', 'HTTPS_PROXY' => ..., 'NO_PROXY' => ... })
+applied to every process that pulls images: the systemd unit (ExecStartPre
+pull / ExecStart up), the rolling-update exec and the drift-verify exec.
+Also used as the default proxy for auto-created `registries` logins.
+Empty hash (default) = no proxy. Independent of `env_vars`, which only
+reaches the containers at runtime via the .env file.
 
 Default value: `{}`
 
@@ -726,6 +755,7 @@ The following parameters are available in the `podman_compose::registry` defined
 * [`user`](#-podman_compose--registry--user)
 * [`rootless`](#-podman_compose--registry--rootless)
 * [`ensure`](#-podman_compose--registry--ensure)
+* [`proxy_env`](#-podman_compose--registry--proxy_env)
 
 ##### <a name="-podman_compose--registry--server"></a>`server`
 
@@ -768,6 +798,17 @@ Data type: `Enum['present', 'absent']`
 'present' to log in, 'absent' to log out and remove sentinel.
 
 Default value: `'present'`
+
+##### <a name="-podman_compose--registry--proxy_env"></a>`proxy_env`
+
+Data type: `Hash[String[1], String[1]]`
+
+HTTP(S) proxy environment variables (e.g.
+{ 'HTTP_PROXY' => 'http://proxy:3128', 'HTTPS_PROXY' => ..., 'NO_PROXY' => ... })
+injected into the `podman login` exec so authentication to a registry
+reachable only through a forward proxy works. Empty hash (default) = no proxy.
+
+Default value: `{}`
 
 ### <a name="podman_compose--user"></a>`podman_compose::user`
 
@@ -912,6 +953,10 @@ as a plain `String`. The latter is accepted because hiera-eyaml decrypts
 `convert_to: 'Sensitive'` is configured. project.pp / cron.pp normalize the
 value to `Sensitive` before handing it to `podman_compose::registry`.
 
+The optional `proxy` hash is passed through to `podman_compose::registry`'s
+`proxy_env` so the login can reach a registry that is only accessible through
+a forward proxy.
+
 #### Examples
 
 ##### 
@@ -919,7 +964,8 @@ value to `Sensitive` before handing it to `podman_compose::registry`.
 ```puppet
 {
   'registry.example.com' => { 'username' => 'deploy', 'password' => Sensitive('secret') },
-  'ghcr.io'              => { 'username' => 'bot',    'password' => 'token' },
+  'ghcr.io'              => { 'username' => 'bot',    'password' => 'token',
+                              'proxy' => { 'HTTPS_PROXY' => 'http://proxy:3128' } },
 }
 ```
 
@@ -927,8 +973,9 @@ Alias of
 
 ```puppet
 Hash[String[1], Struct[{
-    username => String[1],
-    password => Variant[Sensitive[String[1]], String[1]],
+    username           => String[1],
+    password           => Variant[Sensitive[String[1]], String[1]],
+    Optional[proxy]    => Hash[String[1], String[1]],
   }]]
 ```
 

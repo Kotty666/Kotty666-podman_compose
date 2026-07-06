@@ -32,6 +32,13 @@
 #   KEY=VALUE pairs for .env file.
 # @param env_secrets
 #   Sensitive KEY=VALUE pairs merged into .env (eyaml-friendly).
+# @param proxy_env
+#   HTTP(S) proxy environment variables (e.g.
+#   { 'HTTP_PROXY' => 'http://proxy:3128', 'HTTPS_PROXY' => ..., 'NO_PROXY' => ... })
+#   set on the scheduled systemd unit so `pull` / `up` / `run` can reach the
+#   registry through a forward proxy. Also the default proxy for auto-created
+#   `registries` logins. Empty hash (default) = no proxy. Independent of
+#   `env_vars`, which only reaches containers at runtime via the .env file.
 # @param run_service
 #   If set, use `podman-compose run --rm <run_service>` instead of
 #   bringing up the full stack. Name must match a service in compose.
@@ -103,6 +110,7 @@ define podman_compose::cron (
   Optional[Stdlib::Absolutepath]      $compose_dir           = undef,
   Hash[String[1], String]             $env_vars              = {},
   Hash[String[1], Sensitive[String]]  $env_secrets           = {},
+  Hash[String[1], String[1]]          $proxy_env             = {},
   Optional[String[1]]                 $run_service           = undef,
   Boolean                             $pull_before_run       = true,
   Optional[String[1]]                 $on_boot_sec           = undef,
@@ -254,11 +262,12 @@ define podman_compose::cron (
         default => Sensitive($_creds['password']),
       }
       ensure_resource('podman_compose::registry', "${_user}@${_safe}", {
-        server   => $_server,
-        username => $_creds['username'],
-        password => $_password,
-        user     => $_user,
-        rootless => $rootless,
+        server    => $_server,
+        username  => $_creds['username'],
+        password  => $_password,
+        user      => $_user,
+        rootless  => $rootless,
+        proxy_env => pick_default($_creds['proxy'], $proxy_env),
       })
       Podman_compose::Registry["${_user}@${_safe}"] -> File["${_compose_dir}/${compose_file_name}"]
     }
@@ -321,6 +330,7 @@ define podman_compose::cron (
       'service_timeout'      => $service_timeout,
       'extra_systemd_config' => $extra_systemd_config,
       'run_service'          => $run_service,
+      'proxy_env'            => $proxy_env,
     }
 
     $_timer_tpl_params = {

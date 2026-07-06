@@ -38,6 +38,35 @@ describe 'podman_compose::project' do
         it { is_expected.to contain_file('/etc/systemd/system/podman-compose-demo.service') }
       end
 
+      context 'with proxy_env (rootful)' do
+        let(:params) do
+          rootful_compose_params.merge(
+            'proxy_env' => {
+              'HTTPS_PROXY' => 'http://proxy:3128',
+              'NO_PROXY'    => 'localhost,127.0.0.1',
+            },
+          )
+        end
+
+        it { is_expected.to compile.with_all_deps }
+
+        it 'renders proxy Environment= lines into the systemd unit so pull/up use the proxy' do
+          is_expected.to contain_file('/etc/systemd/system/podman-compose-demo.service')
+            .with_content(%r{Environment="HTTPS_PROXY=http://proxy:3128"})
+            .with_content(%r{Environment="NO_PROXY=localhost,127.0.0.1"})
+        end
+
+        it 'injects the proxy into the rolling-update exec environment' do
+          expect(catalogue.resource('Exec', 'podman-compose-restart-demo')[:environment])
+            .to include('HTTPS_PROXY=http://proxy:3128', 'NO_PROXY=localhost,127.0.0.1')
+        end
+
+        it 'injects the proxy into the drift-verify exec environment' do
+          expect(catalogue.resource('Exec', 'podman-compose-verify-demo')[:environment])
+            .to include('HTTPS_PROXY=http://proxy:3128', 'NO_PROXY=localhost,127.0.0.1')
+        end
+      end
+
       context 'rootless requires user' do
         let(:params) do
           {

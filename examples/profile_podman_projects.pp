@@ -20,6 +20,10 @@
 #   Hiera hash of podman_compose::cron definitions.
 # @param registry_placeholder
 #   Token replaced with the real registry FQDN. Matched as a whole word.
+# @param harbor_proxy
+#   When true (typically set per-environment via Hiera), the registry FQDN
+#   is appended to NO_PROXY so Harbor is reached directly while external
+#   image pulls still go through the proxy. Default false.
 #
 # @example Hiera
 #   profile::podman_projects::cron_projects:
@@ -45,6 +49,7 @@ class profile::podman_projects (
   Hash[String[1], Hash] $projects             = {},
   Hash[String[1], Hash] $cron_projects        = {},
   String[1]             $registry_placeholder = 'harbor',
+  Boolean               $harbor_proxy         = false,
 ) {
   include podman_compose
 
@@ -54,13 +59,20 @@ class profile::podman_projects (
   # Whole-word match on the placeholder.
   $_re = "\\b${registry_placeholder}\\b"
 
+  # When proxying, bypass the proxy for Harbor itself (direct/internal),
+  # so only external image pulls traverse the proxy.
+  $_noproxy = $harbor_proxy ? {
+    true    => "localhost,127.0.0.1,${_harbor}",
+    default => 'localhost,127.0.0.1',
+  }
+
   $_proxy_env = $_http_proxy ? {
     undef   => {},
     ''      => {},
     default => {
       'HTTP_PROXY'  => $_http_proxy,
       'HTTPS_PROXY' => $_http_proxy,
-      'NO_PROXY'    => "localhost,127.0.0.1,${_harbor}",
+      'NO_PROXY'    => $_noproxy,
     },
   }
 

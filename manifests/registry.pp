@@ -20,6 +20,11 @@
 #   Whether the user runs rootless podman.
 # @param ensure
 #   'present' to log in, 'absent' to log out and remove sentinel.
+# @param proxy_env
+#   HTTP(S) proxy environment variables (e.g.
+#   { 'HTTP_PROXY' => 'http://proxy:3128', 'HTTPS_PROXY' => ..., 'NO_PROXY' => ... })
+#   injected into the `podman login` exec so authentication to a registry
+#   reachable only through a forward proxy works. Empty hash (default) = no proxy.
 #
 # @example Standalone usage
 #   podman_compose::registry { 'appuser@registry.example.com':
@@ -46,6 +51,7 @@ define podman_compose::registry (
   String[1]                  $user      = 'root',
   Boolean                    $rootless  = true,
   Enum['present', 'absent']  $ensure    = 'present',
+  Hash[String[1], String[1]] $proxy_env = {},
 ) {
   # Sentinel directory for credential change tracking
   $_sentinel_dir = $rootless ? {
@@ -78,11 +84,16 @@ define podman_compose::registry (
   # "$PODMAN_LOGIN_PW" exactly once — no shell re-parsing — so passwords
   # and usernames containing $, `, ', ", \, !, spaces, … are passed
   # through literally.
+  # Proxy vars (if any) are appended so `podman login` can traverse a
+  # forward proxy to reach the registry. NO_PROXY entries let the login
+  # bypass the proxy for internal registries.
+  $_proxy_env = $proxy_env.map |$k, $v| { "${k}=${v}" }
+
   $_login_env = [
     "PODMAN_LOGIN_PW=${password.unwrap}",
     "PODMAN_LOGIN_USER=${username}",
     "PODMAN_LOGIN_SERVER=${server}",
-  ]
+  ] + $_proxy_env
 
   if $ensure == 'absent' {
     # Logout and remove sentinel
