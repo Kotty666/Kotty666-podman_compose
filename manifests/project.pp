@@ -172,9 +172,10 @@ define podman_compose::project (
 
   # Per-service scale flags (`--scale svc=N`) appended to every `up -d`. Empty
   # when no scaling is requested, so the command is unchanged in the common case.
+  $_scale_flags  = $scale.map |$_svc, $_n| { "--scale ${_svc}=${_n}" }.join(' ')
   $_scale_suffix = empty($scale) ? {
     true    => '',
-    default => ' ' + $scale.map |$_svc, $_n| { "--scale ${_svc}=${_n}" }.join(' '),
+    default => " ${_scale_flags}",
   }
 
   $_recreate_ops = $recreate_strategy ? {

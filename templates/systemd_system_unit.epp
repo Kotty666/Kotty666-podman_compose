@@ -9,7 +9,8 @@
   Hash[String, String]  $proxy_env,
   Hash[String, Integer] $scale,
 | -%>
-<%- $scale_args = empty($scale) ? { true => '', default => ' ' + $scale.map |$svc, $n| { "--scale ${svc}=${n}" }.join(' ') } -%>
+<%- $scale_flags = $scale.map |$svc, $n| { "--scale ${svc}=${n}" }.join(' ') -%>
+<%- $scale_args = empty($scale) ? { true => '', default => " ${scale_flags}" } -%>
 # Managed by Puppet - DO NOT EDIT
 # podman-compose project: <%= $project_name %>
 
