@@ -161,6 +161,57 @@ podman_compose::projects:
             - "127.0.0.1:3002:3000"
           restart: unless-stopped
 
+  # ── Static scaling: run a stateless worker N times ──────
+  # The `scale` switch maps service => replica count and appends
+  # `--scale worker=4` to every `up -d`. A scaled service must NOT set a
+  # fixed container_name and must NOT publish a colliding static host port
+  # (this worker publishes none — it only pulls jobs from redis).
+  worker-pool:
+    user: worker
+    rootless: true
+    scale:
+      worker: 4
+    compose:
+      services:
+        worker:
+          image: "ghcr.io/myorg/job-worker:1.8"
+          environment:
+            REDIS_URL: "redis://redis:6379"
+          depends_on:
+            - redis
+          restart: unless-stopped
+        redis:
+          image: "redis:7-alpine"
+          restart: unless-stopped
+
+  # ── Autoscale-ready API tier (behind the traefik proxy) ─
+  # Prepared for podman_compose::autoscalers below: the replica count is
+  # owned by the autoscaler, so this project deliberately sets NO static
+  # `scale`, and disables verify_running_image so the drift-verify recreate
+  # doesn't reset the replica count on each Puppet run. No container_name,
+  # no fixed host port — traefik load-balances across all `api` replicas
+  # via the `api` service name.
+  api:
+    user: api
+    rootless: true
+    verify_running_image: false
+    compose:
+      services:
+        api:
+          image: "ghcr.io/myorg/api:2.0.3"
+          env_file:
+            - .env
+          labels:
+            traefik.enable: "true"
+            traefik.http.routers.api.rule: "Host(`api.example.com`)"
+            traefik.http.services.api.loadbalancer.server.port: "8080"
+          restart: unless-stopped
+          healthcheck:
+            test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
+            interval: "15s"
+            timeout: "3s"
+            retries: 3
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Scheduled / Periodic Jobs (systemd timer + oneshot)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -266,3 +317,26 @@ podman_compose::cron_projects:
       TARGETS: 'https://app.example.com,https://api.example.com'
     env_secrets:
       SLACK_WEBHOOK_URL: ENC[PKCS7,MIIBmQYJ...]
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Load-based autoscalers (CPU-driven horizontal scaling)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Each entry deploys a small systemd daemon that samples average CPU across a
+# service's replicas and scales it between min/max. It targets an EXISTING
+# project (title = project name) — see the `api` project above, which is set
+# up with verify_running_image: false and no static `scale`.
+
+podman_compose::autoscalers:
+
+  # ── Autoscale the 'api' service of the 'api' project ────
+  api:
+    service: api
+    user: api
+    rootless: true
+    min_replicas: 2
+    max_replicas: 6
+    cpu_high: 70      # scale out when avg CPU > 70%
+    cpu_low: 25       # scale in  when avg CPU < 25%
+    step: 1
+    interval: 30      # seconds between CPU samples
+    cooldown: 120     # min seconds between scaling actions (anti-flap)

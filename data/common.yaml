@@ -12,3 +12,4 @@ podman_compose::user_compose_dir_name: 'compose'
 podman_compose::root_compose_dir: '/opt/compose'
 podman_compose::projects: {}
 podman_compose::cron_projects: {}
+podman_compose::autoscalers: {}

@@ -1,0 +1,29 @@
+<%- |
+  String                $name,
+  String                $project,
+  String                $service,
+  Stdlib::Absolutepath  $compose_dir,
+  Stdlib::Absolutepath  $script_path,
+  Integer               $interval,
+  Hash[String, String]  $proxy_env,
+| -%>
+# Managed by Puppet - DO NOT EDIT
+# podman-compose autoscaler: <%= $project %>/<%= $service %> (rootless)
+
+[Unit]
+Description=Podman Compose Autoscaler - <%= $project %>/<%= $service %>
+Documentation=man:podman-compose(1)
+After=default.target
+
+[Service]
+Type=simple
+WorkingDirectory=<%= $compose_dir %>
+<% $proxy_env.each |String $key, String $value| { -%>
+Environment="<%= $key %>=<%= $value %>"
+<% } -%>
+ExecStart=/usr/bin/python3 <%= $script_path %>
+Restart=always
+RestartSec=<%= $interval %>
+
+[Install]
+WantedBy=default.target

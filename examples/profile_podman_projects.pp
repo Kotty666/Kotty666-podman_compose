@@ -18,6 +18,9 @@
 #   Hiera hash of podman_compose::project definitions.
 # @param cron_projects
 #   Hiera hash of podman_compose::cron definitions.
+# @param autoscalers
+#   Hiera hash of podman_compose::autoscale definitions. These carry no compose
+#   hash or registries, so they are declared as-is (no placeholder expansion).
 # @param registry_placeholder
 #   Token replaced with the real registry FQDN. Matched as a whole word.
 # @param harbor_proxy
@@ -48,6 +51,7 @@
 class profile::podman_projects (
   Hash[String[1], Hash] $projects             = {},
   Hash[String[1], Hash] $cron_projects        = {},
+  Hash[String[1], Hash] $autoscalers          = {},
   String[1]             $registry_placeholder = 'harbor',
   Boolean               $harbor_proxy         = false,
 ) {
@@ -85,6 +89,15 @@ class profile::podman_projects (
   $cron_projects.each |String[1] $cname, Hash $cdata| {
     podman_compose::cron { $cname:
       * => profile::podman_projects::expand($cdata, $_re, $_harbor, $_proxy_env),
+    }
+  }
+
+  # Autoscalers reference an existing project by title and carry no compose
+  # hash or registries, so there's nothing to expand — declare them directly.
+  # Inject the proxy so the daemon's `up -d` (which may pull) can traverse it.
+  $autoscalers.each |String[1] $aname, Hash $adata| {
+    podman_compose::autoscale { $aname:
+      * => { 'proxy_env' => $_proxy_env } + $adata,
     }
   }
 }
