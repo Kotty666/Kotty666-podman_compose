@@ -244,6 +244,7 @@ Setting `ensure: absent` will:
 | `compose_dir` | `Stdlib::Absolutepath` | auto | Project directory |
 | `env_vars` | `Hash[String, String]` | `{}` | Environment variables for `.env` |
 | `env_secrets` | `Hash[String, Sensitive]` | `{}` | Sensitive env vars for `.env` |
+| `scale` | `Hash[String, Integer[1]]` | `{}` | Run individual services with N replicas, e.g. `{ 'app' => 5 }` → `up -d --scale app=5` (see below) |
 | `pull_on_start` | `Boolean` | `true` | Pull images on start |
 | `compose_file_name` | `String` | `'compose.yml'` | Compose filename (set to `'docker-compose.yml'` for the legacy name) |
 | `service_timeout` | `Integer[60]` | `300` | Systemd start timeout |
@@ -253,6 +254,40 @@ Setting `ensure: absent` will:
 | `search_registries` | `Array[String]` | `['docker.io']` | Registries for resolving unqualified image names; shared per user |
 | `verify_running_image` | `Boolean` | `true` | On each Puppet run, compare running image digest vs desired and roll affected services if drifted |
 | `recreate_strategy` | `Enum['rolling','force-recreate','down-up']` | `'force-recreate'` | How containers are re-created on compose/`.env` change (see below) |
+
+### Scaling services
+
+Run a service with more than one container replica via the `scale` parameter — a
+switch mapping `service => count`, equivalent to `podman-compose up -d --scale
+app=5`:
+
+```yaml
+podman_compose::projects:
+  myapp:
+    user: appuser
+    scale:
+      app: 5          # 5 replicas of the 'app' service
+      worker: 3
+    compose:
+      services:
+        app:
+          image: "ghcr.io/acme/app:1.4"
+          # no container_name: — a scaled service must not pin a fixed name
+          ports:
+            - "8080"  # publish without a fixed host port so replicas don't collide
+        worker:
+          image: "ghcr.io/acme/worker:1.4"
+```
+
+The scale flags are applied consistently to the systemd unit
+(`ExecStart`/`ExecReload`), the rolling-update trigger, and the drift-verify
+recreate, so replica counts survive restarts, config changes and image drift.
+
+**Constraints** (podman-compose): a scaled service must **not** set a fixed
+`container_name:`, and must **not** statically publish a host port that would
+collide across replicas — publish without a host port (`"8080"`) or use a range
+and let Podman assign ports. Put a reverse proxy / load balancer in front to
+distribute traffic across replicas.
 
 ### Unqualified image names (short names)
 

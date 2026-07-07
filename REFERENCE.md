@@ -470,6 +470,7 @@ The following parameters are available in the `podman_compose::project` defined 
 * [`env_vars`](#-podman_compose--project--env_vars)
 * [`env_secrets`](#-podman_compose--project--env_secrets)
 * [`proxy_env`](#-podman_compose--project--proxy_env)
+* [`scale`](#-podman_compose--project--scale)
 * [`pull_on_start`](#-podman_compose--project--pull_on_start)
 * [`compose_file_name`](#-podman_compose--project--compose_file_name)
 * [`service_timeout`](#-podman_compose--project--service_timeout)
@@ -568,6 +569,20 @@ pull / ExecStart up), the rolling-update exec and the drift-verify exec.
 Also used as the default proxy for auto-created `registries` logins.
 Empty hash (default) = no proxy. Independent of `env_vars`, which only
 reaches the containers at runtime via the .env file.
+
+Default value: `{}`
+
+##### <a name="-podman_compose--project--scale"></a>`scale`
+
+Data type: `Hash[String[1], Integer[1]]`
+
+Optional Hash of `service => replica count` used to run individual compose
+services with more than one container, e.g. `{ 'app' => 5 }` translates to
+`podman-compose up -d --scale app=5`. Applied consistently to the systemd
+unit (ExecStart/ExecReload), the rolling-update trigger and the drift-verify
+recreate. Note: a scaled service must not set a fixed `container_name:` and
+must not statically publish a host port that would collide across replicas
+(use a range or let podman assign ports). Empty hash (default) = no scaling.
 
 Default value: `{}`
 
