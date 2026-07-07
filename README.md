@@ -230,6 +230,8 @@ Setting `ensure: absent` will:
 | `compose_ensure` | `String` | `'present'` | Package ensure state |
 | `compose_binary` | `Stdlib::Absolutepath` | OS-dependent | Path to binary |
 | `projects` | `Hash` | `{}` | Hash of project definitions |
+| `cron_projects` | `Hash` | `{}` | Hash of scheduled (timer) job definitions |
+| `autoscalers` | `Hash` | `{}` | Hash of `podman_compose::autoscale` definitions |
 
 ### Defined type: `podman_compose::project`
 
@@ -288,6 +290,45 @@ recreate, so replica counts survive restarts, config changes and image drift.
 collide across replicas — publish without a host port (`"8080"`) or use a range
 and let Podman assign ports. Put a reverse proxy / load balancer in front to
 distribute traffic across replicas.
+
+### Load-based autoscaling
+
+For *dynamic* scaling driven by CPU load, `podman_compose::autoscale` deploys a
+small long-running Python daemon (a systemd service with `Restart=always`) that
+samples the average CPU across a service's replicas every `interval` seconds and
+scales it between `min_replicas` and `max_replicas`:
+
+```yaml
+podman_compose::autoscalers:
+  api:                     # title = the podman_compose::project it targets
+    service: api
+    user: api
+    min_replicas: 2
+    max_replicas: 6
+    cpu_high: 70           # scale out when avg CPU > 70%
+    cpu_low: 25            # scale in  when avg CPU < 25%
+    step: 1                # replicas added/removed per action
+    interval: 30           # seconds between samples
+    cooldown: 120          # min seconds between scaling actions (anti-flap)
+```
+
+It reuses the existing project's compose file — it does **not** render one. To
+keep Puppet and the autoscaler from fighting over the replica count, the target
+project must:
+
+- **not** set a static `scale` for that service, and
+- set `verify_running_image: false` (otherwise the drift-verify recreate resets
+  the replica count on the next Puppet run).
+
+Only **stateless** services are suitable. The same constraints as static scaling
+apply (no fixed `container_name:`, no colliding static host port). Put a reverse
+proxy (Traefik/nginx/HAProxy) in front to distribute load across replicas — the
+Compose DNS alias only does sticky round-robin.
+
+Podman has no native autoscaler (unlike Kubernetes' HPA or Docker Swarm); this
+daemon is a lightweight, self-contained substitute for modest needs. Watch it
+with `journalctl --user -u podman-compose-autoscale-<name>` (rootless) or
+`journalctl -u podman-compose-autoscale-<name>` (rootful).
 
 ### Unqualified image names (short names)
 

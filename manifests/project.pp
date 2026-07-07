@@ -189,6 +189,26 @@ define podman_compose::project (
     fail("podman_compose::project[${name}]: 'compose' hash must contain a 'services' key")
   }
 
+  # --- Scale sanity checks ---
+  # Fail early on a scale request that podman-compose can't satisfy cleanly:
+  #   * the service must actually exist, and
+  #   * it must not pin a fixed `container_name:` — a name is unique, so podman
+  #     brings up one correctly-named container plus generated
+  #     <project>_<svc>_<n> replicas, a confusing half-scaled state. Removing
+  #     container_name lets all replicas get consistent generated names.
+  # (A colliding static host port is the other blocker, but `ports:` entries are
+  # too varied — ranges, protocols, long form — to detect reliably here, so that
+  # one is left to runtime; see the README scaling notes.)
+  $scale.each |String $_svc, Integer $_n| {
+    unless $_svc in $compose['services'] {
+      fail("podman_compose::project[${name}]: scale references service '${_svc}' which is not defined in compose['services']")
+    }
+    if 'container_name' in $compose['services'][$_svc] {
+      $_cn_msg = "service '${_svc}' sets a fixed container_name and cannot be scaled to ${_n}; remove container_name to scale"
+      fail("podman_compose::project[${name}]: ${_cn_msg}")
+    }
+  }
+
   # Helper prefix for rootless systemctl commands.
   # Puppet exec 'environment' arrays don't support shell expansion,
   # so we wrap every rootless systemctl call in bash -c with $(id -u)
@@ -451,7 +471,13 @@ define podman_compose::project (
           'proxy_env'            => $proxy_env,
           'scale'                => $scale,
         }),
-        notify  => Exec["systemd-user-reload-${name}"],
+        # Notify the recreate trigger too: a change to the unit's ExecStart
+        # (e.g. an altered `scale`) is otherwise never applied — daemon-reload
+        # alone does not re-run `up -d`, and the running service is left as-is.
+        notify  => [
+          Exec["systemd-user-reload-${name}"],
+          Exec["podman-compose-restart-${name}"],
+        ],
         require => Exec["mkdir-systemd-user-${name}"],
       }
 
@@ -532,7 +558,14 @@ define podman_compose::project (
           'proxy_env'            => $proxy_env,
           'scale'                => $scale,
         }),
-        notify  => Exec["systemctl-daemon-reload-${name}"],
+        # Notify the recreate trigger too: a change to the unit's ExecStart
+        # (e.g. an altered `scale`) is otherwise never applied — daemon-reload
+        # alone does not re-run `up -d`, and `service { ensure => running }` sees
+        # the service as already active, so it never restarts.
+        notify  => [
+          Exec["systemctl-daemon-reload-${name}"],
+          Exec["podman-compose-restart-${name}"],
+        ],
       }
 
       exec { "systemctl-daemon-reload-${name}":

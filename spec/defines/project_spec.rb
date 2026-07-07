@@ -327,6 +327,11 @@ describe 'podman_compose::project' do
             .with_content(%r{up -d --force-recreate --remove-orphans --scale web=5})
         end
 
+        it 'notifies the recreate trigger from the unit file so scale changes are applied' do
+          is_expected.to contain_file('/etc/systemd/system/podman-compose-demo.service')
+            .that_notifies('Exec[podman-compose-restart-demo]')
+        end
+
         context 'default (no scale)' do
           let(:params) { rootful_compose_params }
 
@@ -334,6 +339,28 @@ describe 'podman_compose::project' do
             is_expected.to contain_file('/etc/systemd/system/podman-compose-demo.service')
               .without_content(%r{--scale})
           end
+        end
+
+        context 'scaling a service with a fixed container_name' do
+          let(:params) do
+            {
+              'rootless' => false,
+              'scale'    => { 'web' => 3 },
+              'compose'  => {
+                'services' => {
+                  'web' => { 'image' => 'nginx:1.27', 'container_name' => 'web' },
+                },
+              },
+            }
+          end
+
+          it { is_expected.to compile.and_raise_error(%r{sets a fixed container_name and cannot be scaled}) }
+        end
+
+        context 'scaling a service that is not defined' do
+          let(:params) { rootful_compose_params.merge('scale' => { 'nope' => 2 }) }
+
+          it { is_expected.to compile.and_raise_error(%r{scale references service 'nope' which is not defined}) }
         end
       end
 
