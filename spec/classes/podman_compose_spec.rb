@@ -51,6 +51,22 @@ describe 'podman_compose' do
         it { is_expected.to compile.with_all_deps }
         it { is_expected.to contain_podman_compose__cron('job') }
       end
+
+      context 'with an autoscaler defined' do
+        let(:params) do
+          {
+            'autoscalers' => {
+              'api' => {
+                'rootless' => false,
+                'service'  => 'api',
+              },
+            },
+          }
+        end
+
+        it { is_expected.to compile.with_all_deps }
+        it { is_expected.to contain_podman_compose__autoscale('api') }
+      end
     end
   end
 end

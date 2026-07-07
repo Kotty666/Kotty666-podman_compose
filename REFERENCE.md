@@ -16,6 +16,7 @@
 
 ### Defined types
 
+* [`podman_compose::autoscale`](#podman_compose--autoscale): CPU-based horizontal autoscaler for a single compose service
 * [`podman_compose::cron`](#podman_compose--cron): Manage a scheduled podman-compose job via systemd timer
 * [`podman_compose::project`](#podman_compose--project): Manage a single podman-compose project
 * [`podman_compose::registry`](#podman_compose--registry): Manage a container registry login for a specific user
@@ -88,6 +89,7 @@ The following parameters are available in the `podman_compose` class:
 * [`root_compose_dir`](#-podman_compose--root_compose_dir)
 * [`projects`](#-podman_compose--projects)
 * [`cron_projects`](#-podman_compose--cron_projects)
+* [`autoscalers`](#-podman_compose--autoscalers)
 
 ##### <a name="-podman_compose--manage_package"></a>`manage_package`
 
@@ -171,7 +173,230 @@ Data type: `Hash[String[1], Hash]`
 
 Hash of podman_compose::cron resources for scheduled/periodic jobs.
 
+##### <a name="-podman_compose--autoscalers"></a>`autoscalers`
+
+Data type: `Hash[String[1], Hash]`
+
+Hash of podman_compose::autoscale resources for CPU-based scaling of
+individual services of existing projects.
+
 ## Defined types
+
+### <a name="podman_compose--autoscale"></a>`podman_compose::autoscale`
+
+Deploys a small long-running Python daemon (a systemd service with
+`Restart=always`) that periodically samples the average CPU usage across all
+running replicas of one compose service and scales it up or down between
+`min_replicas` and `max_replicas` via
+`podman-compose up -d --no-recreate --scale <service>=<n>`.
+
+This operates on a project already managed by `podman_compose::project`; it
+does NOT render a compose file of its own. To avoid Puppet and the autoscaler
+fighting over the replica count, the referenced project MUST:
+  * NOT set a static `scale` for this service, and
+  * set `verify_running_image => false` (or otherwise not force-recreate the
+    service on every run) — the drift-verify recreate would otherwise reset
+    the replica count on the next Puppet run.
+The scaled service must also not set a fixed `container_name:` and must not
+statically publish a colliding host port (see `podman_compose::project`'s
+`scale` docs). Only stateless services should be autoscaled.
+
+#### Examples
+
+##### Autoscale the 'api' service of the 'api' project between 2 and 6
+
+```puppet
+podman_compose::autoscale { 'api':
+  service      => 'api',
+  user         => 'api',
+  min_replicas => 2,
+  max_replicas => 6,
+  cpu_high     => 70,
+  cpu_low      => 30,
+  interval     => 30,
+  cooldown     => 120,
+}
+```
+
+#### Parameters
+
+The following parameters are available in the `podman_compose::autoscale` defined type:
+
+* [`service`](#-podman_compose--autoscale--service)
+* [`project`](#-podman_compose--autoscale--project)
+* [`ensure`](#-podman_compose--autoscale--ensure)
+* [`rootless`](#-podman_compose--autoscale--rootless)
+* [`user`](#-podman_compose--autoscale--user)
+* [`group`](#-podman_compose--autoscale--group)
+* [`manage_user`](#-podman_compose--autoscale--manage_user)
+* [`compose_dir`](#-podman_compose--autoscale--compose_dir)
+* [`compose_file_name`](#-podman_compose--autoscale--compose_file_name)
+* [`compose_project`](#-podman_compose--autoscale--compose_project)
+* [`min_replicas`](#-podman_compose--autoscale--min_replicas)
+* [`max_replicas`](#-podman_compose--autoscale--max_replicas)
+* [`cpu_high`](#-podman_compose--autoscale--cpu_high)
+* [`cpu_low`](#-podman_compose--autoscale--cpu_low)
+* [`step`](#-podman_compose--autoscale--step)
+* [`interval`](#-podman_compose--autoscale--interval)
+* [`cooldown`](#-podman_compose--autoscale--cooldown)
+* [`proxy_env`](#-podman_compose--autoscale--proxy_env)
+
+##### <a name="-podman_compose--autoscale--service"></a>`service`
+
+Data type: `String[1]`
+
+Name of the compose service to scale. Must match a service in the project's
+compose file.
+
+##### <a name="-podman_compose--autoscale--project"></a>`project`
+
+Data type: `String[1]`
+
+Name of the `podman_compose::project` (its title). Used to derive the
+compose directory and, by default, the Compose project name. Defaults to
+this resource's title.
+
+Default value: `$name`
+
+##### <a name="-podman_compose--autoscale--ensure"></a>`ensure`
+
+Data type: `Enum['present', 'absent']`
+
+'present' deploys the autoscaler, 'absent' stops and removes it.
+
+Default value: `'present'`
+
+##### <a name="-podman_compose--autoscale--rootless"></a>`rootless`
+
+Data type: `Boolean`
+
+Run the daemon as an unprivileged user (systemd user unit) or as root.
+
+Default value: `true`
+
+##### <a name="-podman_compose--autoscale--user"></a>`user`
+
+Data type: `Optional[String[1]]`
+
+System user owning the project. Required when rootless is true.
+
+Default value: `undef`
+
+##### <a name="-podman_compose--autoscale--group"></a>`group`
+
+Data type: `Optional[String[1]]`
+
+Primary group for the user. Defaults to $user.
+
+Default value: `undef`
+
+##### <a name="-podman_compose--autoscale--manage_user"></a>`manage_user`
+
+Data type: `Boolean`
+
+Whether to declare the system user resource. Defaults to false: the
+autoscaler is an add-on to an existing `podman_compose::project`, which
+already owns the user (with its subuid/subgid ranges). Only set true for a
+standalone deployment where no project declares the user — in that case the
+user's subid ranges must be managed elsewhere (podman_compose::user default
+`manage_subid` requires them).
+
+Default value: `false`
+
+##### <a name="-podman_compose--autoscale--compose_dir"></a>`compose_dir`
+
+Data type: `Optional[Stdlib::Absolutepath]`
+
+Absolute path to the project directory. Auto-derived from `project` if unset
+(mirrors `podman_compose::project`).
+
+Default value: `undef`
+
+##### <a name="-podman_compose--autoscale--compose_file_name"></a>`compose_file_name`
+
+Data type: `String[1]`
+
+Name of the compose file. Default: compose.yml.
+
+Default value: `'compose.yml'`
+
+##### <a name="-podman_compose--autoscale--compose_project"></a>`compose_project`
+
+Data type: `Optional[String[1]]`
+
+Override the Compose project name used to match containers by label. When
+unset the daemon derives it from the compose directory basename (lowercased),
+matching Compose's default.
+
+Default value: `undef`
+
+##### <a name="-podman_compose--autoscale--min_replicas"></a>`min_replicas`
+
+Data type: `Integer[1]`
+
+Lower bound on replica count. The daemon never scales below this.
+
+Default value: `1`
+
+##### <a name="-podman_compose--autoscale--max_replicas"></a>`max_replicas`
+
+Data type: `Integer[1]`
+
+Upper bound on replica count. The daemon never scales above this.
+
+Default value: `5`
+
+##### <a name="-podman_compose--autoscale--cpu_high"></a>`cpu_high`
+
+Data type: `Integer[1, 100]`
+
+Average CPU percent (summed per container, as podman reports it) above which
+the service scales out by `step`.
+
+Default value: `70`
+
+##### <a name="-podman_compose--autoscale--cpu_low"></a>`cpu_low`
+
+Data type: `Integer[0, 100]`
+
+Average CPU percent below which the service scales in by `step`. Must be
+lower than `cpu_high` to leave a stable band and avoid flapping.
+
+Default value: `30`
+
+##### <a name="-podman_compose--autoscale--step"></a>`step`
+
+Data type: `Integer[1]`
+
+How many replicas to add/remove per scaling action.
+
+Default value: `1`
+
+##### <a name="-podman_compose--autoscale--interval"></a>`interval`
+
+Data type: `Integer[1]`
+
+Seconds between CPU samples.
+
+Default value: `30`
+
+##### <a name="-podman_compose--autoscale--cooldown"></a>`cooldown`
+
+Data type: `Integer[0]`
+
+Minimum seconds between two scaling actions, so a burst doesn't ratchet the
+count up and down repeatedly.
+
+Default value: `120`
+
+##### <a name="-podman_compose--autoscale--proxy_env"></a>`proxy_env`
+
+Data type: `Hash[String[1], String[1]]`
+
+HTTP(S) proxy environment variables set on the daemon's unit so the
+`up -d` (which may pull) can reach the registry through a forward proxy.
+
+Default value: `{}`
 
 ### <a name="podman_compose--cron"></a>`podman_compose::cron`
 

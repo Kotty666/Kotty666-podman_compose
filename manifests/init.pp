@@ -33,6 +33,9 @@
 #   Hash of podman_compose::project resources, typically from Hiera lookup.
 # @param cron_projects
 #   Hash of podman_compose::cron resources for scheduled/periodic jobs.
+# @param autoscalers
+#   Hash of podman_compose::autoscale resources for CPU-based scaling of
+#   individual services of existing projects.
 #
 # @example Basic usage via Hiera
 #   include podman_compose
@@ -75,6 +78,7 @@ class podman_compose (
   Stdlib::Absolutepath            $root_compose_dir,
   Hash[String[1], Hash]           $projects,
   Hash[String[1], Hash]           $cron_projects,
+  Hash[String[1], Hash]           $autoscalers,
 ) {
   contain podman_compose::install
 
@@ -86,6 +90,12 @@ class podman_compose (
 
   $cron_projects.each |String $name, Hash $config| {
     podman_compose::cron { $name:
+      * => $config,
+    }
+  }
+
+  $autoscalers.each |String $name, Hash $config| {
+    podman_compose::autoscale { $name:
       * => $config,
     }
   }

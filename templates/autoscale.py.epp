@@ -1,0 +1,138 @@
+<%- |
+  Stdlib::Absolutepath  $compose_binary,
+  String                $compose_file_name,
+  Stdlib::Absolutepath  $compose_dir,
+  String                $compose_project,
+  String                $service,
+  Integer               $min_replicas,
+  Integer               $max_replicas,
+  Integer               $cpu_high,
+  Integer               $cpu_low,
+  Integer               $step,
+  Integer               $interval,
+  Integer               $cooldown,
+| -%>
+#!/usr/bin/env python3
+# Managed by Puppet - DO NOT EDIT
+#
+# CPU-based horizontal autoscaler for a single podman-compose service.
+# Long-running daemon: samples average CPU across the service's replicas every
+# INTERVAL seconds and scales between MIN_R and MAX_R, honouring a COOLDOWN
+# between actions so bursts don't cause flapping.
+import os
+import subprocess
+import time
+
+COMPOSE_BIN = "<%= $compose_binary %>"
+COMPOSE_FILE = "<%= $compose_file_name %>"
+COMPOSE_DIR = "<%= $compose_dir %>"
+SERVICE = "<%= $service %>"
+MIN_R = <%= $min_replicas %>
+MAX_R = <%= $max_replicas %>
+CPU_HIGH = <%= $cpu_high %>
+CPU_LOW = <%= $cpu_low %>
+STEP = <%= $step %>
+INTERVAL = <%= $interval %>
+COOLDOWN = <%= $cooldown %>
+
+# Compose project name: explicit override, else the directory basename
+# lowercased (Compose's default), matching the drift-verify helper.
+PROJECT = "<%= $compose_project %>" or os.path.basename(COMPOSE_DIR).lower()
+
+
+def run(cmd):
+    return subprocess.run(
+        cmd, cwd=COMPOSE_DIR, capture_output=True, text=True, check=False
+    )
+
+
+def container_ids():
+    """Running container IDs of SERVICE, via Docker-compat labels first
+    (present since podman-compose 1.0), falling back to io.podman.compose.*
+    (added in 1.5)."""
+    for proj_label, svc_label in (
+        ("com.docker.compose.project", "com.docker.compose.service"),
+        ("io.podman.compose.project", "io.podman.compose.service"),
+    ):
+        r = run(
+            [
+                "podman", "ps",
+                "--filter", "label={}={}".format(proj_label, PROJECT),
+                "--filter", "label={}={}".format(svc_label, SERVICE),
+                "--format", "{{.ID}}",
+            ]
+        )
+        ids = [line for line in r.stdout.split() if line]
+        if ids:
+            return ids
+    return []
+
+
+def avg_cpu(ids):
+    """Average CPU percent across the given containers, or None if unknown."""
+    if not ids:
+        return None
+    r = run(["podman", "stats", "--no-stream", "--format", "{{.CPU}}"] + ids)
+    vals = []
+    for line in r.stdout.splitlines():
+        line = line.strip().rstrip("%").strip()
+        if not line:
+            continue
+        try:
+            vals.append(float(line))
+        except ValueError:
+            pass
+    if not vals:
+        return None
+    return sum(vals) / len(vals)
+
+
+def scale_to(n):
+    """Add/remove replicas to reach n without recreating existing containers."""
+    run(
+        [
+            COMPOSE_BIN, "-f", COMPOSE_FILE, "up", "-d",
+            "--no-recreate", "--scale", "{}={}".format(SERVICE, n),
+        ]
+    )
+
+
+def decide(current, cpu):
+    """Return the desired replica count for the current count and CPU load."""
+    if cpu > CPU_HIGH and current < MAX_R:
+        return min(current + STEP, MAX_R)
+    if cpu < CPU_LOW and current > MIN_R:
+        return max(current - STEP, MIN_R)
+    return current
+
+
+def main():
+    last_action = 0.0
+    print(
+        "autoscaler start: project={} service={} min={} max={} "
+        "high={}% low={}% interval={}s cooldown={}s".format(
+            PROJECT, SERVICE, MIN_R, MAX_R, CPU_HIGH, CPU_LOW, INTERVAL, COOLDOWN
+        ),
+        flush=True,
+    )
+    while True:
+        ids = container_ids()
+        current = len(ids)
+        cpu = avg_cpu(ids)
+        now = time.monotonic()
+        if cpu is not None and (now - last_action) >= COOLDOWN:
+            target = decide(current, cpu)
+            if target != current:
+                print(
+                    "scale {}: {} -> {} (cpu={:.1f}%)".format(
+                        SERVICE, current, target, cpu
+                    ),
+                    flush=True,
+                )
+                scale_to(target)
+                last_action = now
+        time.sleep(INTERVAL)
+
+
+if __name__ == "__main__":
+    main()
