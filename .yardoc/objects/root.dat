@@ -837,7 +837,7 @@ Must not overlap with any other user's range on the same host.;T;I"subgid_st
 ;"I"
 param;F;#I"GNumber of subordinate GIDs allocated to this user (default 65536).;T;I"subgid_count;T;$[@ä;@^o;!
 ;"I"api;F;#@[;0;$0;@^;%[ ;&@ª;'0;@^;F;:@b;;i ;<@;=I"/puppet_defined_types::podman_compose::user;Fo;
-;o;;I"manifests/project.pp;T;I"∆Tdefine podman_compose::project (
+;o;;I"manifests/project.pp;T;I"«Vdefine podman_compose::project (
   Hash                                $compose,
   Podman_compose::Ensure              $ensure               = 'running',
   Boolean                             $rootless             = true,
@@ -848,6 +848,7 @@ param;F;#I"GNumber of subordinate GIDs allocated to this user (default 65536).
   Hash[String[1], String]             $env_vars             = {},
   Hash[String[1], Sensitive[String]]  $env_secrets          = {},
   Hash[String[1], String[1]]          $proxy_env            = {},
+  Hash[String[1], Integer[1]]         $scale                = {},
   Boolean                             $pull_on_start        = true,
   String[1]                           $compose_file_name    = 'compose.yml',
   Integer[60]                         $service_timeout      = 300,
@@ -894,10 +895,18 @@ param;F;#I"GNumber of subordinate GIDs allocated to this user (default 65536).
   # detection, which misses `.env` content delivered via `env_file:` and never
   # re-creates existing networks ‚Äî hence the configurable strategy.
   $_cb = $podman_compose::compose_binary
+
+  # Per-service scale flags (`--scale svc=N`) appended to every `up -d`. Empty
+  # when no scaling is requested, so the command is unchanged in the common case.
+  $_scale_suffix = empty($scale) ? {
+    true    => '',
+    default => ' ' + $scale.map |$_svc, $_n| { "--scale ${_svc}=${_n}" }.join(' '),
+  }
+
   $_recreate_ops = $recreate_strategy ? {
-    'rolling'        => "${_cb} -f ${compose_file_name} up -d --remove-orphans",
-    'force-recreate' => "${_cb} -f ${compose_file_name} up -d --force-recreate --remove-orphans",
-    'down-up'        => "${_cb} -f ${compose_file_name} down && ${_cb} -f ${compose_file_name} up -d --remove-orphans",
+    'rolling'        => "${_cb} -f ${compose_file_name} up -d --remove-orphans${_scale_suffix}",
+    'force-recreate' => "${_cb} -f ${compose_file_name} up -d --force-recreate --remove-orphans${_scale_suffix}",
+    'down-up'        => "${_cb} -f ${compose_file_name} down && ${_cb} -f ${compose_file_name} up -d --remove-orphans${_scale_suffix}",
   }
 
   # Validate compose hash has services
@@ -1165,6 +1174,7 @@ param;F;#I"GNumber of subordinate GIDs allocated to this user (default 65536).
           'service_timeout'      => $service_timeout,
           'extra_systemd_config' => $extra_systemd_config,
           'proxy_env'            => $proxy_env,
+          'scale'                => $scale,
         }),
         notify  => Exec["systemd-user-reload-${name}"],
         require => Exec["mkdir-systemd-user-${name}"],
@@ -1245,6 +1255,7 @@ param;F;#I"GNumber of subordinate GIDs allocated to this user (default 65536).
           'service_timeout'      => $service_timeout,
           'extra_systemd_config' => $extra_systemd_config,
           'proxy_env'            => $proxy_env,
+          'scale'                => $scale,
         }),
         notify  => Exec["systemctl-daemon-reload-${name}"],
       }
@@ -1338,7 +1349,7 @@ param;F;#I"GNumber of subordinate GIDs allocated to this user (default 65536).
             user        => $_user,
             environment => $_proxy_arr,
             onlyif      => $_bus_check,
-            require => [
+            require     => [
               File["${_compose_dir}/.puppet-images.txt"],
               File["${_compose_dir}/.puppet-verify-images.sh"],
               File["${_compose_dir}/${compose_file_name}"],
@@ -1362,17 +1373,18 @@ param;F;#I"GNumber of subordinate GIDs allocated to this user (default 65536).
       }
     }
   }
-};T;io;o;;F;i ;in;[o;;I"compose;T;I"	Hash;To;;I"ensure;T;I"Podman_compose::Ensure;T;I"'running';To;;I"rootless;T;I"Boolean;T;I"	true;To;;I"	user;T;I"Optional[String[1]];T;I"
+};T;iw;o;;F;i ;iv;[o;;I"compose;T;I"	Hash;To;;I"ensure;T;I"Podman_compose::Ensure;T;I"'running';To;;I"rootless;T;I"Boolean;T;I"	true;To;;I"	user;T;I"Optional[String[1]];T;I"
 undef;To;;I"
 group;T;I"Optional[String[1]];T;I"
 undef;To;;I"manage_user;T;I"Boolean;T;I"	true;To;;I"compose_dir;T;I"#Optional[Stdlib::Absolutepath];T;I"
-undef;To;;I"env_vars;T;I"Hash[String[1], String];T;I"{};To;;I"env_secrets;T;I"'Hash[String[1], Sensitive[String]];T;I"{};To;;I"proxy_env;T;I"Hash[String[1], String[1]];T;I"{};To;;I"pull_on_start;T;I"Boolean;T;I"	true;To;;I"compose_file_name;T;I"String[1];T;I"'compose.yml';To;;I"service_timeout;T;I"Integer[60];T;I"300;To;;I"extra_systemd_config;T;I"Hash[String, String];T;I"{};To;;I"registries;T;I"Podman_compose::Registries;T;I"{};To;;I"manage_search_registries;T;I"Boolean;T;I"	true;To;;I"search_registries;T;I"Array[String[1]];T;I"['docker.io'];To;;I"verify_running_image;T;I"Boolean;T;I"	true;To;;I"recreate_strategy;T;I"&Podman_compose::Recreate_strategy;T;I"'force-recreate';To;;I"manage_subid;T;I"Boolean;T;I"	true;To;;I"subuid_start;T;I"Optional[Integer];T;I"
+undef;To;;I"env_vars;T;I"Hash[String[1], String];T;I"{};To;;I"env_secrets;T;I"'Hash[String[1], Sensitive[String]];T;I"{};To;;I"proxy_env;T;I"Hash[String[1], String[1]];T;I"{};To;;I"
+scale;T;I" Hash[String[1], Integer[1]];T;I"{};To;;I"pull_on_start;T;I"Boolean;T;I"	true;To;;I"compose_file_name;T;I"String[1];T;I"'compose.yml';To;;I"service_timeout;T;I"Integer[60];T;I"300;To;;I"extra_systemd_config;T;I"Hash[String, String];T;I"{};To;;I"registries;T;I"Podman_compose::Registries;T;I"{};To;;I"manage_search_registries;T;I"Boolean;T;I"	true;To;;I"search_registries;T;I"Array[String[1]];T;I"['docker.io'];To;;I"verify_running_image;T;I"Boolean;T;I"	true;To;;I"recreate_strategy;T;I"&Podman_compose::Recreate_strategy;T;I"'force-recreate';To;;I"manage_subid;T;I"Boolean;T;I"	true;To;;I"subuid_start;T;I"Optional[Integer];T;I"
 undef;To;;I"subuid_count;T;I"Integer;T;I"
 65536;To;;I"subgid_start;T;I"Optional[Integer];T;I"
 undef;To;;I"subgid_count;T;I"Integer;T;I"
 65536;T;I"podman_compose::project;F;IC;"†Creates the compose directory, renders the compose file from a Hash,
 optionally manages an .env file, and sets up a systemd service to
-keep the project running.;T;0;0;F; [o;!
+keep the project running.;T;0;0;F; [ o;!
 ;"I"summary;F;#I"+Manage a single podman-compose project;T;0;$0;0o;!
 ;"I"
 param;F;#I"nThe compose file content as a Puppet Hash. Gets rendered to YAML.
@@ -1403,6 +1415,15 @@ pull / ExecStart up), the rolling-update exec and the drift-verify exec.
 Also used as the default proxy for auto-created `registries` logins.
 Empty hash (default) = no proxy. Independent of `env_vars`, which only
 reaches the containers at runtime via the .env file.;T;I"proxy_env;T;$0;0o;!
+;"I"
+param;F;#I"Optional Hash of `service => replica count` used to run individual compose
+services with more than one container, e.g. `{ 'app' => 5 }` translates to
+`podman-compose up -d --scale app=5`. Applied consistently to the systemd
+unit (ExecStart/ExecReload), the rolling-update trigger and the drift-verify
+recreate. Note: a scaled service must not set a fixed `container_name:` and
+must not statically publish a host port that would collide across replicas
+(use a range or let podman assign ports). Empty hash (default) = no scaling.;T;I"
+scale;T;$0;0o;!
 ;"I"
 param;F;#I"1Pull images before (re)starting the service.;T;I"pull_on_start;T;$0;0o;!
 ;"I"
@@ -1470,7 +1491,7 @@ param;F;#I"NNumber of subordinate GIDs allocated to the project user (default 
           volumes:
             - "/var/run/podman/podman.sock:/var/run/docker.sock:ro"
             - "./config:/etc/traefik:ro"
-          restart: unless-stopped;T;I"Hiera definition;T;$0;0;%[ ;&I"`@summary Manage a single podman-compose project
+          restart: unless-stopped;T;I"Hiera definition;T;$0;0;%[ ;&I"å@summary Manage a single podman-compose project
 
 Creates the compose directory, renders the compose file from a Hash,
 optionally manages an .env file, and sets up a systemd service to
@@ -1504,6 +1525,14 @@ keep the project running.
   Also used as the default proxy for auto-created `registries` logins.
   Empty hash (default) = no proxy. Independent of `env_vars`, which only
   reaches the containers at runtime via the .env file.
+@param scale
+  Optional Hash of `service => replica count` used to run individual compose
+  services with more than one container, e.g. `{ 'app' => 5 }` translates to
+  `podman-compose up -d --scale app=5`. Applied consistently to the systemd
+  unit (ExecStart/ExecReload), the rolling-update trigger and the drift-verify
+  recreate. Note: a scaled service must not set a fixed `container_name:` and
+  must not statically publish a host port that would collide across replicas
+  (use a range or let podman assign ports). Empty hash (default) = no scaling.
 @param pull_on_start
   Pull images before (re)starting the service.
 @param compose_file_name
@@ -1574,9 +1603,9 @@ keep the project running.
               - "/var/run/podman/podman.sock:/var/run/docker.sock:ro"
               - "./config:/etc/traefik:ro"
             restart: unless-stopped
-;T;'0;[[@0[@@[@@[@ @"[@$@&[@(@*[@,@.[@0@2[@4@6[@8@:[@<@>[@@@B[@D@F[@H@J[@L@N[@P@R[@T@V[@X@Z[@\@^[@`@b[@d@f[@h@j[@l@n[@p@r;IC;[ ;(@;)IC;[ ;(@;*IC;[ ;(@;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@io;3T;:podman_compose::project;5;6;7;8; [ ;9{ ;IC;"†Creates the compose directory, renders the compose file from a Hash,
+;T;'0;[[@0[@@[@@[@ @"[@$@&[@(@*[@,@.[@0@2[@4@6[@8@:[@<@>[@@@B[@D@F[@H@J[@L@N[@P@R[@T@V[@X@Z[@\@^[@`@b[@d@f[@h@j[@l@n[@p@r[@t@v;IC;[ ;(@;)IC;[ ;(@;*IC;[ ;(@;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@iw;3T;:podman_compose::project;5;6;7;8; [ ;9{ ;IC;"†Creates the compose directory, renders the compose file from a Hash,
 optionally manages an .env file, and sets up a systemd service to
-keep the project running.;T; [ o;!
+keep the project running.;T; [!o;!
 ;"I"summary;F;#I"+Manage a single podman-compose project;T;0;$0;@o;!
 ;"I"
 param;F;#I"nThe compose file content as a Puppet Hash. Gets rendered to YAML.
@@ -1608,28 +1637,37 @@ Also used as the default proxy for auto-created `registries` logins.
 Empty hash (default) = no proxy. Independent of `env_vars`, which only
 reaches the containers at runtime via the .env file.;T;I"proxy_env;T;$[@9;@o;!
 ;"I"
-param;F;#I"1Pull images before (re)starting the service.;T;I"pull_on_start;T;$[@=;@o;!
+param;F;#I"Optional Hash of `service => replica count` used to run individual compose
+services with more than one container, e.g. `{ 'app' => 5 }` translates to
+`podman-compose up -d --scale app=5`. Applied consistently to the systemd
+unit (ExecStart/ExecReload), the rolling-update trigger and the drift-verify
+recreate. Note: a scaled service must not set a fixed `container_name:` and
+must not statically publish a host port that would collide across replicas
+(use a range or let podman assign ports). Empty hash (default) = no scaling.;T;I"
+scale;T;$[@=;@o;!
+;"I"
+param;F;#I"1Pull images before (re)starting the service.;T;I"pull_on_start;T;$[@A;@o;!
 ;"I"
 param;F;#I"ÉName of the compose file. Default: compose.yml (the modern Compose Spec
-name). Set to 'docker-compose.yml' for the legacy filename.;T;I"compose_file_name;T;$[@A;@o;!
+name). Set to 'docker-compose.yml' for the legacy filename.;T;I"compose_file_name;T;$[@E;@o;!
 ;"I"
-param;F;#I".Systemd TimeoutStartSec for pull + start.;T;I"service_timeout;T;$[@E;@o;!
+param;F;#I".Systemd TimeoutStartSec for pull + start.;T;I"service_timeout;T;$[@I;@o;!
 ;"I"
-param;F;#I">Additional systemd unit directives merged into [Service].;T;I"extra_systemd_config;T;$[@I;@o;!
+param;F;#I">Additional systemd unit directives merged into [Service].;T;I"extra_systemd_config;T;$[@M;@o;!
 ;"I"
 param;F;#I"äHash of registry server => {username, password} for `podman login`.
-Credentials are piped via stdin. Change detection via SHA256 sentinel.;T;I"registries;T;$[@M;@o;!
+Credentials are piped via stdin. Change detection via SHA256 sentinel.;T;I"registries;T;$[@Q;@o;!
 ;"I"
 param;F;#I""Whether to manage the project user's containers `registries.conf` so that
 unqualified image names (e.g. 'louislam/dockge:nightly') resolve. Podman has
 no implicit docker.io default, so on a minimal host short names fail with
-"no unqualified-search-registries are defined". Defaults to true.;T;I"manage_search_registries;T;$[@Q;@o;!
+"no unqualified-search-registries are defined". Defaults to true.;T;I"manage_search_registries;T;$[@U;@o;!
 ;"I"
 param;F;#I"JRegistries used to resolve unqualified image names, written to the user's
 registries.conf when manage_search_registries is true. Defaults to
 ['docker.io']. Shared per user via ensure_resource, so all projects of the
 same user must agree on this value (or set manage_search_registries => false
-and manage registries.conf yourself).;T;I"search_registries;T;$[@U;@o;!
+and manage registries.conf yourself).;T;I"search_registries;T;$[@Y;@o;!
 ;"I"
 param;F;#I"⁄On every Puppet run, compare each service's running container image
 digest with the desired image (after a quiet `pull`). On drift, apply the
@@ -1637,7 +1675,7 @@ configured `recreate_strategy` (default 'force-recreate') so affected
 services actually pick up the new image ‚Äî a bare `up -d` does not recreate
 a running container when only the image digest behind a stable tag changed.
 Detects manual changes, registry digest updates behind a stable tag
-(e.g. ':latest'), and missing containers.;T;I"verify_running_image;T;$[@Y;@o;!
+(e.g. ':latest'), and missing containers.;T;I"verify_running_image;T;$[@];@o;!
 ;"I"
 param;F;#I"»How containers are (re)created when the compose file or .env change.
 Defaults to 'force-recreate' so env changes are always applied cleanly
@@ -1645,22 +1683,22 @@ Defaults to 'force-recreate' so env changes are always applied cleanly
 values). Use 'down-up' when you change network definitions (subnet,
 driver, options), since `up` alone never re-creates an existing network
 ‚Äî at the cost of a brief project downtime. Use 'rolling' for the old,
-least-disruptive `up -d` behaviour.;T;I"recreate_strategy;T;$[@];@o;!
+least-disruptive `up -d` behaviour.;T;I"recreate_strategy;T;$[@a;@o;!
 ;"I"
 param;F;#I"œWhether to manage /etc/subuid and /etc/subgid entries for the project
 user. Only takes effect when subuid_start (and subgid_start) are also
-set. Has no effect when the user is pre-declared by a site profile.;T;I"manage_subid;T;$[@a;@o;!
+set. Has no effect when the user is pre-declared by a site profile.;T;I"manage_subid;T;$[@e;@o;!
 ;"I"
 param;F;#I"ŸStart of the subordinate UID range for the project user. Each rootless
 user on a host needs a unique non-overlapping range. When set, the range
-is written to /etc/subuid. Leave unset if the user is declared elsewhere.;T;I"subuid_start;T;$[@e;@o;!
+is written to /etc/subuid. Leave unset if the user is declared elsewhere.;T;I"subuid_start;T;$[@i;@o;!
 ;"I"
-param;F;#I"NNumber of subordinate UIDs allocated to the project user (default 65536).;T;I"subuid_count;T;$[@i;@o;!
+param;F;#I"NNumber of subordinate UIDs allocated to the project user (default 65536).;T;I"subuid_count;T;$[@m;@o;!
 ;"I"
 param;F;#I"|Start of the subordinate GID range for the project user. Must not overlap
-with any other user's range on the same host.;T;I"subgid_start;T;$[@m;@o;!
+with any other user's range on the same host.;T;I"subgid_start;T;$[@q;@o;!
 ;"I"
-param;F;#I"NNumber of subordinate GIDs allocated to the project user (default 65536).;T;I"subgid_count;T;$[@q;@o;!
+param;F;#I"NNumber of subordinate GIDs allocated to the project user (default 65536).;T;I"subgid_count;T;$[@u;@o;!
 ;"I"example;F;#I"gpodman_compose::projects:
   traefik:
     rootless: false
@@ -1675,7 +1713,7 @@ param;F;#I"NNumber of subordinate GIDs allocated to the project user (default 
             - "/var/run/podman/podman.sock:/var/run/docker.sock:ro"
             - "./config:/etc/traefik:ro"
           restart: unless-stopped;T;I"Hiera definition;T;$0;@o;!
-;"I"api;F;#@[;0;$0;@;%[ ;&@ﬁ;'0;@;F;:@;;i ;<@;=I"2puppet_defined_types::podman_compose::project;Fo;
+;"I"api;F;#@[;0;$0;@;%[ ;&@Ê;'0;@;F;:@;;i ;<@;=I"2puppet_defined_types::podman_compose::project;Fo;
 ;o;;I"manifests/registry.pp;T;I"Udefine podman_compose::registry (
   String[1]                  $server,
   String[1]                  $username,
@@ -1868,46 +1906,46 @@ parameter on podman_compose::project / podman_compose::cron.
         registry.example.com:
           username: deploy
           password: ENC[PKCS7,...]
-;T;'0;[[@ê0[@ì0[@ñ0[@ô@õ[@ù@ü[@°@£[@•@ß;IC;[ ;(@â;)IC;[ ;(@â;*IC;[ ;(@â;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@ãi4;3T;:podman_compose::registry;5;6;7;8; [ ;9{ ;IC;"`Runs `podman login` with credentials piped via stdin (no password
+;T;'0;[[@û0[@°0[@§0[@ß@©[@´@≠[@Ø@±[@≥@µ;IC;[ ;(@ó;)IC;[ ;(@ó;*IC;[ ;(@ó;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@ôi4;3T;:podman_compose::registry;5;6;7;8; [ ;9{ ;IC;"`Runs `podman login` with credentials piped via stdin (no password
 in the process list). A SHA256 sentinel file tracks credential
 changes ‚Äî if username or password change in Hiera, the login is
 re-executed on the next Puppet run.
 
 Can be used standalone or auto-created via the `registries`
 parameter on podman_compose::project / podman_compose::cron.;T; [o;!
-;"I"summary;F;#I":Manage a container registry login for a specific user;T;0;$0;@âo;!
+;"I"summary;F;#I":Manage a container registry login for a specific user;T;0;$0;@óo;!
 ;"I"
-param;F;#I"<Registry FQDN (e.g. 'registry.example.com', 'ghcr.io').;T;I"server;T;$[@ë;@âo;!
+param;F;#I"<Registry FQDN (e.g. 'registry.example.com', 'ghcr.io').;T;I"server;T;$[@ü;@óo;!
 ;"I"
-param;F;#I"%Registry username or token name.;T;I"username;T;$[@î;@âo;!
+param;F;#I"%Registry username or token name.;T;I"username;T;$[@¢;@óo;!
 ;"I"
-param;F;#I"3Registry password or access token (Sensitive).;T;I"password;T;$[@ó;@âo;!
+param;F;#I"3Registry password or access token (Sensitive).;T;I"password;T;$[@•;@óo;!
 ;"I"
-param;F;#I"@System user to authenticate. Determines auth.json location.;T;I"	user;T;$[@ö;@âo;!
+param;F;#I"@System user to authenticate. Determines auth.json location.;T;I"	user;T;$[@®;@óo;!
 ;"I"
-param;F;#I"+Whether the user runs rootless podman.;T;I"rootless;T;$[@û;@âo;!
+param;F;#I"+Whether the user runs rootless podman.;T;I"rootless;T;$[@¨;@óo;!
 ;"I"
-param;F;#I"B'present' to log in, 'absent' to log out and remove sentinel.;T;I"ensure;T;$[@¢;@âo;!
+param;F;#I"B'present' to log in, 'absent' to log out and remove sentinel.;T;I"ensure;T;$[@∞;@óo;!
 ;"I"
 param;F;#I"HTTP(S) proxy environment variables (e.g.
 { 'HTTP_PROXY' => 'http://proxy:3128', 'HTTPS_PROXY' => ..., 'NO_PROXY' => ... })
 injected into the `podman login` exec so authentication to a registry
-reachable only through a forward proxy works. Empty hash (default) = no proxy.;T;I"proxy_env;T;$[@¶;@âo;!
+reachable only through a forward proxy works. Empty hash (default) = no proxy.;T;I"proxy_env;T;$[@¥;@óo;!
 ;"I"example;F;#I" podman_compose::registry { 'appuser@registry.example.com':
   server   => 'registry.example.com',
   username => 'deploy',
   password => Sensitive('s3cret'),
   user     => 'appuser',
   rootless => true,
-};T;I"Standalone usage;T;$0;@âo;!
+};T;I"Standalone usage;T;$0;@óo;!
 ;"I"example;F;#I"öpodman_compose::projects:
   myapp:
     user: appuser
     registries:
       registry.example.com:
         username: deploy
-        password: ENC[PKCS7,...];T;I"-Via Hiera (auto-created by project/cron);T;$0;@âo;!
-;"I"api;F;#@[;0;$0;@â;%[ ;&@”;'0;@â;F;:@ç;;i ;<@;=I"3puppet_defined_types::podman_compose::registry;F;(@;)IC;[ ;(@;*IC;[ ;(@;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[ ;3F;:puppet_defined_types;5;6;7:hidden; [ ;9{ ;IC;" ;T; [ ;%[ ;&I" ;T;'0;@;;i ;<@o:/OpenvoxStrings::Yard::CodeObjects::Classes;IC;[o:-OpenvoxStrings::Yard::CodeObjects::Class;o::OpenvoxStrings::Yard::Parsers::Puppet::ClassStatement;I"manifests/init.pp;T;I"Âclass podman_compose (
+        password: ENC[PKCS7,...];T;I"-Via Hiera (auto-created by project/cron);T;$0;@óo;!
+;"I"api;F;#@[;0;$0;@ó;%[ ;&@·;'0;@ó;F;:@õ;;i ;<@;=I"3puppet_defined_types::podman_compose::registry;F;(@;)IC;[ ;(@;*IC;[ ;(@;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[ ;3F;:puppet_defined_types;5;6;7:hidden; [ ;9{ ;IC;" ;T; [ ;%[ ;&I" ;T;'0;@;;i ;<@o:/OpenvoxStrings::Yard::CodeObjects::Classes;IC;[o:-OpenvoxStrings::Yard::CodeObjects::Class;o::OpenvoxStrings::Yard::Parsers::Puppet::ClassStatement;I"manifests/init.pp;T;I"Âclass podman_compose (
   Boolean                         $manage_package,
   String[1]                       $podman_package,
   Podman_compose::Install_method  $compose_install_method,
@@ -2052,40 +2090,40 @@ in Hiera to create compose files and systemd services.
           restic:
             image: "restic/restic:0.17"
             command: ["backup", "/data"]
-;T;'0;[[@30[@60[@90[@<0[@?0[@B0[@E0[@H0[@K0[@N0[@Q0[@T0[@W0;IC;[ ;(@,;)IC;[ ;(@,;*IC;[ ;(@,;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@.iE;3T;:podman_compose;5;6;7;8; [ ;9{ ;IC;"~Installs podman and podman-compose, then iterates over projects defined
+;T;'0;[[@A0[@D0[@G0[@J0[@M0[@P0[@S0[@V0[@Y0[@\0[@_0[@b0[@e0;IC;[ ;(@:;)IC;[ ;(@:;*IC;[ ;(@:;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@<iE;3T;:podman_compose;5;6;7;8; [ ;9{ ;IC;"~Installs podman and podman-compose, then iterates over projects defined
 in Hiera to create compose files and systemd services.;T; [o;!
-;"I"summary;F;#I"JInstall podman and podman-compose, manage compose projects from Hiera;T;0;$0;@,o;!
+;"I"summary;F;#I"JInstall podman and podman-compose, manage compose projects from Hiera;T;0;$0;@:o;!
 ;"I"
-param;F;#I"7Whether to manage the podman package installation.;T;I"manage_package;T;$[@4;@,o;!
+param;F;#I"7Whether to manage the podman package installation.;T;I"manage_package;T;$[@B;@:o;!
 ;"I"
-param;F;#I"+Name of the podman package to install.;T;I"podman_package;T;$[@7;@,o;!
+param;F;#I"+Name of the podman package to install.;T;I"podman_package;T;$[@E;@:o;!
 ;"I"
-param;F;#I"AHow to install podman-compose: 'package' (apt/dnf) or 'pip'.;T;I"compose_install_method;T;$[@:;@,o;!
+param;F;#I"AHow to install podman-compose: 'package' (apt/dnf) or 'pip'.;T;I"compose_install_method;T;$[@H;@:o;!
 ;"I"
-param;F;#I"6Package name when using install method 'package'.;T;I"compose_package;T;$[@=;@,o;!
+param;F;#I"6Package name when using install method 'package'.;T;I"compose_package;T;$[@K;@:o;!
 ;"I"
-param;F;#I"6Pip package name when using install method 'pip'.;T;I"compose_pip_package;T;$[@@;@,o;!
+param;F;#I"6Pip package name when using install method 'pip'.;T;I"compose_pip_package;T;$[@N;@:o;!
 ;"I"
-param;F;#I"-Ensure state for podman-compose package.;T;I"compose_ensure;T;$[@C;@,o;!
+param;F;#I"-Ensure state for podman-compose package.;T;I"compose_ensure;T;$[@Q;@:o;!
 ;"I"
-param;F;#I"0Absolute path to the podman-compose binary.;T;I"compose_binary;T;$[@F;@,o;!
+param;F;#I"0Absolute path to the podman-compose binary.;T;I"compose_binary;T;$[@T;@:o;!
 ;"I"
 param;F;#I"ﬂWhether to install the systemd-container package (provides machinectl).
 Useful for opening proper user systemd sessions via
 `machinectl shell <user>@` with correctly initialized
-XDG_RUNTIME_DIR and DBUS_SESSION_BUS_ADDRESS.;T;I"manage_systemd_container;T;$[@I;@,o;!
+XDG_RUNTIME_DIR and DBUS_SESSION_BUS_ADDRESS.;T;I"manage_systemd_container;T;$[@W;@:o;!
 ;"I"
-param;F;#I"+Name of the systemd-container package.;T;I"systemd_container_package;T;$[@L;@,o;!
+param;F;#I"+Name of the systemd-container package.;T;I"systemd_container_package;T;$[@Z;@:o;!
 ;"I"
 param;F;#I"õName of the parent directory under each user's home that holds rootless
-compose projects. Default: 'compose' (resulting in /home/<user>/compose/<project>).;T;I"user_compose_dir_name;T;$[@O;@,o;!
+compose projects. Default: 'compose' (resulting in /home/<user>/compose/<project>).;T;I"user_compose_dir_name;T;$[@];@:o;!
 ;"I"
-param;F;#I"QAbsolute base directory for rootful compose projects. Default: /opt/compose.;T;I"root_compose_dir;T;$[@R;@,o;!
+param;F;#I"QAbsolute base directory for rootful compose projects. Default: /opt/compose.;T;I"root_compose_dir;T;$[@`;@:o;!
 ;"I"
-param;F;#I"LHash of podman_compose::project resources, typically from Hiera lookup.;T;I"projects;T;$[@U;@,o;!
+param;F;#I"LHash of podman_compose::project resources, typically from Hiera lookup.;T;I"projects;T;$[@c;@:o;!
 ;"I"
-param;F;#I"HHash of podman_compose::cron resources for scheduled/periodic jobs.;T;I"cron_projects;T;$[@X;@,o;!
-;"I"example;F;#I"include podman_compose;T;I"Basic usage via Hiera;T;$0;@,o;!
+param;F;#I"HHash of podman_compose::cron resources for scheduled/periodic jobs.;T;I"cron_projects;T;$[@f;@:o;!
+;"I"example;F;#I"include podman_compose;T;I"Basic usage via Hiera;T;$0;@:o;!
 ;"I"example;F;#I"∫podman_compose::projects:
   myapp:
     user: appuser
@@ -2107,8 +2145,8 @@ podman_compose::cron_projects:
       services:
         restic:
           image: "restic/restic:0.17"
-          command: ["backup", "/data"];T;I"Hiera data;T;$0;@,o;!
-;"I"api;F;#@[;0;$0;@,;%[ ;&@ú;'0;@,;F;:@0;;i ;<@*;=I"#puppet_classes::podman_compose;Fo;D;o;E;I"manifests/install.pp;T;I"0class podman_compose::install {
+          command: ["backup", "/data"];T;I"Hiera data;T;$0;@:o;!
+;"I"api;F;#@[;0;$0;@:;%[ ;&@™;'0;@:;F;:@>;;i ;<@8;=I"#puppet_classes::podman_compose;Fo;D;o;E;I"manifests/install.pp;T;I"0class podman_compose::install {
   assert_private()
 
   if $podman_compose::manage_package {
@@ -2162,13 +2200,13 @@ podman_compose::cron_projects:
 ;"I"api;F;#I"private;T;0;$0;0;%[ ;&I">@summary Install podman and podman-compose
 
 @api private
-;T;'0;[ ;IC;[ ;(@	;)IC;[ ;(@	;*IC;[ ;(@	;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@i
+;T;'0;[ ;IC;[ ;(@;)IC;[ ;(@;*IC;[ ;(@;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@i
 ;3T;:podman_compose::install;5;6;7;8; [ ;9{ ;IC;" ;T; [o;!
-;"I"summary;F;#I"&Install podman and podman-compose;T;0;$0;@	o;!
-;"I"api;F;#I"private;T;0;$0;@	;%[ ;&@;'0;@	;F;:@;;i ;<@*;=I",puppet_classes::podman_compose::install;F;(@*;)IC;[ ;(@*;*IC;[ ;(@*;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[ ;3F;:puppet_classes;5;6;7;B; [ ;9{ ;IC;" ;T; [ ;%[ ;&@);'0;@*;;i ;<@o:7OpenvoxStrings::Yard::CodeObjects::DataTypeAliases;IC;[	o:5OpenvoxStrings::Yard::CodeObjects::DataTypeAlias;o:BOpenvoxStrings::Yard::Parsers::Puppet::DataTypeAliasStatement;I"types/ensure.pp;T;I"APodman_compose::Ensure = Enum['running', 'stopped', 'absent';T;i;o;;F;i ;i:@alias_ofI")Enum['running', 'stopped', 'absent'];T;I"Podman_compose::Ensure;T;IC;" ;T;0;0;F; [o;!
-;"I"summary;F;#I".Ensure state for a podman-compose project;T;0;$0;0;%[ ;&I"7@summary Ensure state for a podman-compose project;T;'0;M@E;IC;[ ;(@@;)IC;[ ;(@@;*IC;[ ;(@@;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@Bi;3T;:Podman_compose::Ensure;5;6;7;8; [ ;9{ ;IC;" ;T; [o;!
-;"I"summary;F;#I".Ensure state for a podman-compose project;T;0;$0;@@o;!
-;"I"api;F;#@[;0;$0;@@;%[ ;&@M;'0;@@;F;:@D;;i ;<@>;=I"5puppet_data_type_aliases::Podman_compose::Ensure;Fo;K;o;L;I"types/registries.pp;T;I"ﬁPodman_compose::Registries = Hash[
+;"I"summary;F;#I"&Install podman and podman-compose;T;0;$0;@o;!
+;"I"api;F;#I"private;T;0;$0;@;%[ ;&@';'0;@;F;:@;;i ;<@8;=I",puppet_classes::podman_compose::install;F;(@8;)IC;[ ;(@8;*IC;[ ;(@8;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[ ;3F;:puppet_classes;5;6;7;B; [ ;9{ ;IC;" ;T; [ ;%[ ;&@7;'0;@8;;i ;<@o:7OpenvoxStrings::Yard::CodeObjects::DataTypeAliases;IC;[	o:5OpenvoxStrings::Yard::CodeObjects::DataTypeAlias;o:BOpenvoxStrings::Yard::Parsers::Puppet::DataTypeAliasStatement;I"types/ensure.pp;T;I"APodman_compose::Ensure = Enum['running', 'stopped', 'absent';T;i;o;;F;i ;i:@alias_ofI")Enum['running', 'stopped', 'absent'];T;I"Podman_compose::Ensure;T;IC;" ;T;0;0;F; [o;!
+;"I"summary;F;#I".Ensure state for a podman-compose project;T;0;$0;0;%[ ;&I"7@summary Ensure state for a podman-compose project;T;'0;M@S;IC;[ ;(@N;)IC;[ ;(@N;*IC;[ ;(@N;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@Pi;3T;:Podman_compose::Ensure;5;6;7;8; [ ;9{ ;IC;" ;T; [o;!
+;"I"summary;F;#I".Ensure state for a podman-compose project;T;0;$0;@No;!
+;"I"api;F;#@[;0;$0;@N;%[ ;&@[;'0;@N;F;:@R;;i ;<@L;=I"5puppet_data_type_aliases::Podman_compose::Ensure;Fo;K;o;L;I"types/registries.pp;T;I"ﬁPodman_compose::Registries = Hash[
   String[1],
   Struct[{
     username           => String[1],
@@ -2209,7 +2247,7 @@ value to `Sensitive` before handing it to `podman_compose::registry`.
 
 The optional `proxy` hash is passed through to `podman_compose::registry`'s
 `proxy_env` so the login can reach a registry that is only accessible through
-a forward proxy.;T;'0;M@h;IC;[ ;(@c;)IC;[ ;(@c;*IC;[ ;(@c;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@ei;3T;:Podman_compose::Registries;5;6;7;8; [ ;9{ ;IC;"The password may be supplied either as a `Sensitive[String]` (preferred) or
+a forward proxy.;T;'0;M@v;IC;[ ;(@q;)IC;[ ;(@q;*IC;[ ;(@q;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@si;3T;:Podman_compose::Registries;5;6;7;8; [ ;9{ ;IC;"The password may be supplied either as a `Sensitive[String]` (preferred) or
 as a plain `String`. The latter is accepted because hiera-eyaml decrypts
 `ENC[...]` blocks into ordinary strings unless a `lookup_options`
 `convert_to: 'Sensitive'` is configured. project.pp / cron.pp normalize the
@@ -2218,16 +2256,16 @@ value to `Sensitive` before handing it to `podman_compose::registry`.
 The optional `proxy` hash is passed through to `podman_compose::registry`'s
 `proxy_env` so the login can reach a registry that is only accessible through
 a forward proxy.;T; [o;!
-;"I"summary;F;#I"(Registry credentials hash structure;T;0;$0;@co;!
+;"I"summary;F;#I"(Registry credentials hash structure;T;0;$0;@qo;!
 ;"I"example;F;#I" {
   'registry.example.com' => { 'username' => 'deploy', 'password' => Sensitive('secret') },
   'ghcr.io'              => { 'username' => 'bot',    'password' => 'token',
                               'proxy' => { 'HTTPS_PROXY' => 'http://proxy:3128' } },
-};T;I" ;T;$0;@co;!
-;"I"api;F;#@[;0;$0;@c;%[ ;&@t;'0;@c;F;:@g;;i ;<@>;=I"9puppet_data_type_aliases::Podman_compose::Registries;Fo;K;o;L;I"types/install_method.pp;T;I";Podman_compose::Install_method = Enum['package', 'pip';T;i;o;;F;i ;i;MI"Enum['package', 'pip'];T;I"#Podman_compose::Install_method;T;IC;" ;T;0;0;F; [o;!
-;"I"summary;F;#I"&Install method for podman-compose;T;0;$0;0;%[ ;&I"/@summary Install method for podman-compose;T;'0;M@ì;IC;[ ;(@é;)IC;[ ;(@é;*IC;[ ;(@é;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@êi;3T;:#Podman_compose::Install_method;5;6;7;8; [ ;9{ ;IC;" ;T; [o;!
-;"I"summary;F;#I"&Install method for podman-compose;T;0;$0;@éo;!
-;"I"api;F;#@[;0;$0;@é;%[ ;&@õ;'0;@é;F;:@í;;i ;<@>;=I"=puppet_data_type_aliases::Podman_compose::Install_method;Fo;K;o;L;I"types/recreate_strategy.pp;T;I"TPodman_compose::Recreate_strategy = Enum['rolling', 'force-recreate', 'down-up';T;i;o;;F;i ;i;MI"1Enum['rolling', 'force-recreate', 'down-up'];T;I"&Podman_compose::Recreate_strategy;T;IC;"`* `rolling`        - `up -d --remove-orphans`. Least disruptive; relies on
+};T;I" ;T;$0;@qo;!
+;"I"api;F;#@[;0;$0;@q;%[ ;&@Ç;'0;@q;F;:@u;;i ;<@L;=I"9puppet_data_type_aliases::Podman_compose::Registries;Fo;K;o;L;I"types/install_method.pp;T;I";Podman_compose::Install_method = Enum['package', 'pip';T;i;o;;F;i ;i;MI"Enum['package', 'pip'];T;I"#Podman_compose::Install_method;T;IC;" ;T;0;0;F; [o;!
+;"I"summary;F;#I"&Install method for podman-compose;T;0;$0;0;%[ ;&I"/@summary Install method for podman-compose;T;'0;M@°;IC;[ ;(@ú;)IC;[ ;(@ú;*IC;[ ;(@ú;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@ûi;3T;:#Podman_compose::Install_method;5;6;7;8; [ ;9{ ;IC;" ;T; [o;!
+;"I"summary;F;#I"&Install method for podman-compose;T;0;$0;@úo;!
+;"I"api;F;#@[;0;$0;@ú;%[ ;&@©;'0;@ú;F;:@†;;i ;<@L;=I"=puppet_data_type_aliases::Podman_compose::Install_method;Fo;K;o;L;I"types/recreate_strategy.pp;T;I"TPodman_compose::Recreate_strategy = Enum['rolling', 'force-recreate', 'down-up';T;i;o;;F;i ;i;MI"1Enum['rolling', 'force-recreate', 'down-up'];T;I"&Podman_compose::Recreate_strategy;T;IC;"`* `rolling`        - `up -d --remove-orphans`. Least disruptive; relies on
                      podman-compose's own change detection. May NOT pick up
                      `.env` content changes delivered via `env_file:` and
                      will NOT re-create existing networks.
@@ -2254,7 +2292,7 @@ or .env changes.;T;0;$0;0;%[ ;&I"æ@summary How a project's containers are 
 * `down-up`        - `down` then `up -d --remove-orphans`. Tears the project
                      down (including its networks) and brings it back up, so
                      network topology changes are applied too. Causes a brief
-                     downtime of the whole project.;T;'0;M@∂;IC;[ ;(@±;)IC;[ ;(@±;*IC;[ ;(@±;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@≥i;3T;:&Podman_compose::Recreate_strategy;5;6;7;8; [ ;9{ ;IC;"`* `rolling`        - `up -d --remove-orphans`. Least disruptive; relies on
+                     downtime of the whole project.;T;'0;M@ƒ;IC;[ ;(@ø;)IC;[ ;(@ø;*IC;[ ;(@ø;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@¡i;3T;:&Podman_compose::Recreate_strategy;5;6;7;8; [ ;9{ ;IC;"`* `rolling`        - `up -d --remove-orphans`. Least disruptive; relies on
                      podman-compose's own change detection. May NOT pick up
                      `.env` content changes delivered via `env_file:` and
                      will NOT re-create existing networks.
@@ -2267,6 +2305,6 @@ or .env changes.;T;0;$0;0;%[ ;&I"æ@summary How a project's containers are 
                      network topology changes are applied too. Causes a brief
                      downtime of the whole project.;T; [o;!
 ;"I"summary;F;#I"VHow a project's containers are (re)created when the compose file
-or .env changes.;T;0;$0;@±o;!
-;"I"api;F;#@[;0;$0;@±;%[ ;&@æ;'0;@±;F;:@µ;;i ;<@>;=I"@puppet_data_type_aliases::Podman_compose::Recreate_strategy;F;(@>;)IC;[ ;(@>;*IC;[ ;(@>;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[ ;3F;:puppet_data_type_aliases;5;6;7;B; [ ;9{ ;IC;" ;T; [ ;%[ ;&@);'0;@>;;i ;<@;(@;)IC;[ ;(@;*IC;[ ;(@;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[ ;3F;; ;5;6;7;8; [ ;9{ ;IC;" ;T; [ ;%[ ;&@);'0;@;<0;=@);A@:/puppet_defined_types::podman_compose::cron@
-;I@*:#puppet_classes::podman_compose@,:/puppet_defined_types::podman_compose::user@^:,puppet_classes::podman_compose::install@	:2puppet_defined_types::podman_compose::project@:3puppet_defined_types::podman_compose::registry@â;R@>:5puppet_data_type_aliases::Podman_compose::Ensure@@:9puppet_data_type_aliases::Podman_compose::Registries@c:=puppet_data_type_aliases::Podman_compose::Install_method@é:@puppet_data_type_aliases::Podman_compose::Recreate_strategy@±
+or .env changes.;T;0;$0;@øo;!
+;"I"api;F;#@[;0;$0;@ø;%[ ;&@Ã;'0;@ø;F;:@√;;i ;<@L;=I"@puppet_data_type_aliases::Podman_compose::Recreate_strategy;F;(@L;)IC;[ ;(@L;*IC;[ ;(@L;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[ ;3F;:puppet_data_type_aliases;5;6;7;B; [ ;9{ ;IC;" ;T; [ ;%[ ;&@7;'0;@L;;i ;<@;(@;)IC;[ ;(@;*IC;[ ;(@;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[ ;3F;; ;5;6;7;8; [ ;9{ ;IC;" ;T; [ ;%[ ;&@7;'0;@;<0;=@7;A@:/puppet_defined_types::podman_compose::cron@
+;I@8:#puppet_classes::podman_compose@::/puppet_defined_types::podman_compose::user@^:,puppet_classes::podman_compose::install@:2puppet_defined_types::podman_compose::project@:3puppet_defined_types::podman_compose::registry@ó;R@L:5puppet_data_type_aliases::Podman_compose::Ensure@N:9puppet_data_type_aliases::Podman_compose::Registries@q:=puppet_data_type_aliases::Podman_compose::Install_method@ú:@puppet_data_type_aliases::Podman_compose::Recreate_strategy@ø

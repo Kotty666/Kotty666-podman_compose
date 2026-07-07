@@ -32,6 +32,14 @@
 #   Also used as the default proxy for auto-created `registries` logins.
 #   Empty hash (default) = no proxy. Independent of `env_vars`, which only
 #   reaches the containers at runtime via the .env file.
+# @param scale
+#   Optional Hash of `service => replica count` used to run individual compose
+#   services with more than one container, e.g. `{ 'app' => 5 }` translates to
+#   `podman-compose up -d --scale app=5`. Applied consistently to the systemd
+#   unit (ExecStart/ExecReload), the rolling-update trigger and the drift-verify
+#   recreate. Note: a scaled service must not set a fixed `container_name:` and
+#   must not statically publish a host port that would collide across replicas
+#   (use a range or let podman assign ports). Empty hash (default) = no scaling.
 # @param pull_on_start
 #   Pull images before (re)starting the service.
 # @param compose_file_name
@@ -114,6 +122,7 @@ define podman_compose::project (
   Hash[String[1], String]             $env_vars             = {},
   Hash[String[1], Sensitive[String]]  $env_secrets          = {},
   Hash[String[1], String[1]]          $proxy_env            = {},
+  Hash[String[1], Integer[1]]         $scale                = {},
   Boolean                             $pull_on_start        = true,
   String[1]                           $compose_file_name    = 'compose.yml',
   Integer[60]                         $service_timeout      = 300,
@@ -160,10 +169,18 @@ define podman_compose::project (
   # detection, which misses `.env` content delivered via `env_file:` and never
   # re-creates existing networks — hence the configurable strategy.
   $_cb = $podman_compose::compose_binary
+
+  # Per-service scale flags (`--scale svc=N`) appended to every `up -d`. Empty
+  # when no scaling is requested, so the command is unchanged in the common case.
+  $_scale_suffix = empty($scale) ? {
+    true    => '',
+    default => ' ' + $scale.map |$_svc, $_n| { "--scale ${_svc}=${_n}" }.join(' '),
+  }
+
   $_recreate_ops = $recreate_strategy ? {
-    'rolling'        => "${_cb} -f ${compose_file_name} up -d --remove-orphans",
-    'force-recreate' => "${_cb} -f ${compose_file_name} up -d --force-recreate --remove-orphans",
-    'down-up'        => "${_cb} -f ${compose_file_name} down && ${_cb} -f ${compose_file_name} up -d --remove-orphans",
+    'rolling'        => "${_cb} -f ${compose_file_name} up -d --remove-orphans${_scale_suffix}",
+    'force-recreate' => "${_cb} -f ${compose_file_name} up -d --force-recreate --remove-orphans${_scale_suffix}",
+    'down-up'        => "${_cb} -f ${compose_file_name} down && ${_cb} -f ${compose_file_name} up -d --remove-orphans${_scale_suffix}",
   }
 
   # Validate compose hash has services
@@ -431,6 +448,7 @@ define podman_compose::project (
           'service_timeout'      => $service_timeout,
           'extra_systemd_config' => $extra_systemd_config,
           'proxy_env'            => $proxy_env,
+          'scale'                => $scale,
         }),
         notify  => Exec["systemd-user-reload-${name}"],
         require => Exec["mkdir-systemd-user-${name}"],
@@ -511,6 +529,7 @@ define podman_compose::project (
           'service_timeout'      => $service_timeout,
           'extra_systemd_config' => $extra_systemd_config,
           'proxy_env'            => $proxy_env,
+          'scale'                => $scale,
         }),
         notify  => Exec["systemctl-daemon-reload-${name}"],
       }

@@ -7,7 +7,9 @@
   Integer               $service_timeout,
   Hash[String, String]  $extra_systemd_config,
   Hash[String, String]  $proxy_env,
+  Hash[String, Integer] $scale,
 | -%>
+<%- $scale_args = empty($scale) ? { true => '', default => ' ' + $scale.map |$svc, $n| { "--scale ${svc}=${n}" }.join(' ') } -%>
 # Managed by Puppet - DO NOT EDIT
 # podman-compose project: <%= $project_name %> (rootless)
 
@@ -26,9 +28,9 @@ Environment="<%= $key %>=<%= $value %>"
 <% if $pull_on_start { -%>
 ExecStartPre=<%= $compose_binary %> -f <%= $compose_file_name %> pull
 <% } -%>
-ExecStart=<%= $compose_binary %> -f <%= $compose_file_name %> up -d --remove-orphans
+ExecStart=<%= $compose_binary %> -f <%= $compose_file_name %> up -d --remove-orphans<%= $scale_args %>
 ExecStop=<%= $compose_binary %> -f <%= $compose_file_name %> down
-ExecReload=<%= $compose_binary %> -f <%= $compose_file_name %> up -d --remove-orphans
+ExecReload=<%= $compose_binary %> -f <%= $compose_file_name %> up -d --remove-orphans<%= $scale_args %>
 TimeoutStartSec=<%= $service_timeout %>
 Restart=on-failure
 RestartSec=30

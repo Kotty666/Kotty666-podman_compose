@@ -306,6 +306,37 @@ describe 'podman_compose::project' do
         end
       end
 
+      context 'scale (rootful)' do
+        let(:params) { rootful_compose_params.merge('scale' => { 'web' => 5 }) }
+
+        it { is_expected.to compile.with_all_deps }
+
+        it 'appends --scale to ExecStart/ExecReload in the systemd unit' do
+          is_expected.to contain_file('/etc/systemd/system/podman-compose-demo.service')
+            .with_content(%r{ExecStart=.*up -d --remove-orphans --scale web=5})
+            .with_content(%r{ExecReload=.*up -d --remove-orphans --scale web=5})
+        end
+
+        it 'appends --scale to the rolling-update exec' do
+          is_expected.to contain_exec('podman-compose-restart-demo')
+            .with_command(%r{up -d --force-recreate --remove-orphans --scale web=5})
+        end
+
+        it 'appends --scale to the drift-verify recreate' do
+          is_expected.to contain_file(verify_images_script)
+            .with_content(%r{up -d --force-recreate --remove-orphans --scale web=5})
+        end
+
+        context 'default (no scale)' do
+          let(:params) { rootful_compose_params }
+
+          it 'omits --scale entirely' do
+            is_expected.to contain_file('/etc/systemd/system/podman-compose-demo.service')
+              .without_content(%r{--scale})
+          end
+        end
+      end
+
       context 'recreate_strategy (rootful)' do
         context 'default is force-recreate' do
           let(:params) { rootful_compose_params }
