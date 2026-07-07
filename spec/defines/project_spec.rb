@@ -327,6 +327,11 @@ describe 'podman_compose::project' do
             .with_content(%r{up -d --force-recreate --remove-orphans --scale web=5})
         end
 
+        it 'notifies the recreate trigger from the unit file so scale changes are applied' do
+          is_expected.to contain_file('/etc/systemd/system/podman-compose-demo.service')
+            .that_notifies('Exec[podman-compose-restart-demo]')
+        end
+
         context 'default (no scale)' do
           let(:params) { rootful_compose_params }
 

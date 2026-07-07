@@ -451,7 +451,13 @@ define podman_compose::project (
           'proxy_env'            => $proxy_env,
           'scale'                => $scale,
         }),
-        notify  => Exec["systemd-user-reload-${name}"],
+        # Notify the recreate trigger too: a change to the unit's ExecStart
+        # (e.g. an altered `scale`) is otherwise never applied — daemon-reload
+        # alone does not re-run `up -d`, and the running service is left as-is.
+        notify  => [
+          Exec["systemd-user-reload-${name}"],
+          Exec["podman-compose-restart-${name}"],
+        ],
         require => Exec["mkdir-systemd-user-${name}"],
       }
 
@@ -532,7 +538,14 @@ define podman_compose::project (
           'proxy_env'            => $proxy_env,
           'scale'                => $scale,
         }),
-        notify  => Exec["systemctl-daemon-reload-${name}"],
+        # Notify the recreate trigger too: a change to the unit's ExecStart
+        # (e.g. an altered `scale`) is otherwise never applied — daemon-reload
+        # alone does not re-run `up -d`, and `service { ensure => running }` sees
+        # the service as already active, so it never restarts.
+        notify  => [
+          Exec["systemctl-daemon-reload-${name}"],
+          Exec["podman-compose-restart-${name}"],
+        ],
       }
 
       exec { "systemctl-daemon-reload-${name}":
