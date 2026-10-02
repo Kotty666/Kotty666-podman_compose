@@ -1,0 +1,417 @@
+<%- |
+  Stdlib::Absolutepath $conf_dir,
+  Stdlib::Absolutepath $state_file,
+  Boolean              $restart_aardvark,
+| -%>
+#!/usr/bin/env python3
+# Managed by Puppet - DO NOT EDIT
+#
+# Propagates host nameserver changes into *running* podman-compose containers
+# without restarting them. Triggered by podman-dns-sync.path (inotify on the
+# host resolv.conf) and podman-dns-sync.timer (periodic fallback).
+#
+# Podman hands DNS to a container in one of two ways, both handled here:
+#
+#  * Container gets a copy of the host resolv.conf (default `podman` network,
+#    network_mode host, slirp4netns/pasta, CNI without dnsname, ...).
+#    -> The copy at ResolvConfPath is bind-mounted into the container, so
+#       rewriting it *in place* (same inode) is visible immediately.
+#
+#  * Container is on a network with DNS enabled (compose's `<project>_default`
+#    with netavark/aardvark-dns): its resolv.conf only points at the network
+#    gateway; aardvark-dns resolves external names via the upstream servers it
+#    read from resolv.conf (rootless: a copy inside the rootless netns).
+#    -> Refresh the rootless-netns copy in place, then make aardvark-dns pick
+#       the new upstreams up:
+#         >= 1.17  watches resolv.conf via inotify (SIGHUP is harmless)
+#         >= 1.12  re-reads upstreams on SIGHUP
+#         <  1.12  upstreams only read at start -> restart the aardvark-dns
+#                  process (brief DNS blip, containers keep running)
+#    CNI + dnsname (podman 3.x) runs dnsmasq, which polls resolv.conf itself.
+#
+# Nameservers a container did not inherit from the host are never touched:
+# network gateways (aardvark/dnsname), explicit `dns:` from compose,
+# link-local (pasta's DNS forwarder), slirp4netns' 10.0.2.3 and loopback.
+import glob
+import ipaddress
+import json
+import os
+import pwd
+import re
+import signal
+import subprocess
+import sys
+import time
+
+CONF_DIR = "<%= $conf_dir %>"
+STATE_FILE = "<%= $state_file %>"
+RESTART_AARDVARK = <%= $restart_aardvark ? { true => 'True', default => 'False' } %>
+
+HOST_RESOLV = "/etc/resolv.conf"
+# Podman itself falls back to this file when the host resolv.conf only lists
+# loopback stubs (systemd-resolved's 127.0.0.53), since those are unreachable
+# from a container network namespace.
+RESOLVED_RESOLV = "/run/systemd/resolve/resolv.conf"
+SLIRP_DNS = "10.0.2.3"
+
+
+def log(msg):
+    print(msg, flush=True)
+
+
+def run(cmd, user=None, stdin=None):
+    """Run cmd as root or (via runuser) as a rootless user with the
+    environment podman needs to find its storage and runtime dir."""
+    if user is not None:
+        cmd = [
+            "runuser", "-u", user.pw_name, "--",
+            "env",
+            "HOME={}".format(user.pw_dir),
+            "XDG_RUNTIME_DIR=/run/user/{}".format(user.pw_uid),
+        ] + cmd
+    return subprocess.run(
+        cmd, input=stdin, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        universal_newlines=True, cwd="/", check=False,
+    )
+
+
+# --- resolv.conf helpers ---------------------------------------------------
+
+def nameservers(text):
+    out = []
+    for line in text.splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and parts[0] == "nameserver":
+            out.append(parts[1])
+    return out
+
+
+def ip(addr):
+    try:
+        return ipaddress.ip_address(addr.split("%")[0])
+    except ValueError:
+        return None
+
+
+def read(path):
+    try:
+        with open(path) as f:
+            return f.read()
+    except OSError:
+        return None
+
+
+def host_nameservers():
+    ns = nameservers(read(HOST_RESOLV) or "")
+    if ns and all(ip(n) is not None and ip(n).is_loopback for n in ns):
+        ns = nameservers(read(RESOLVED_RESOLV) or "")
+    # Link-local servers are skipped like loopback: is_foreign() treats them
+    # as container-local, so pushing one would duplicate it on every run.
+    return [n for n in ns if ip(n) is not None
+            and not ip(n).is_loopback and not ip(n).is_link_local]
+
+
+def host_resolv_mtime():
+    mtimes = []
+    for path in (HOST_RESOLV, RESOLVED_RESOLV):
+        try:
+            mtimes.append(os.stat(path).st_mtime)
+        except OSError:
+            pass
+    return max(mtimes) if mtimes else 0
+
+
+def is_foreign(addr, keep):
+    """True for nameservers that were not inherited from the host."""
+    if addr in keep or addr == SLIRP_DNS:
+        return True
+    a = ip(addr)
+    return a is None or a.is_loopback or a.is_link_local
+
+
+def render(text, desired, keep):
+    """Return text with host-inherited nameservers replaced by `desired`
+    (at the position of the first one), or None if nothing to change.
+    search/options lines and foreign nameservers stay untouched."""
+    current = nameservers(text)
+    inherited = [n for n in current if not is_foreign(n, keep)]
+    if not inherited or inherited == desired:
+        return None
+    out, placed = [], False
+    for line in text.splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and parts[0] == "nameserver" \
+                and not is_foreign(parts[1], keep):
+            if not placed:
+                out.extend("nameserver {}".format(n) for n in desired)
+                placed = True
+            continue
+        out.append(line)
+    return "\n".join(out) + "\n"
+
+
+def rewrite_in_place(path, text):
+    # r+ / truncate keeps the inode, so the container's bind mount sees it.
+    # Never replace via rename: the container would keep the old file.
+    with open(path, "r+") as f:
+        f.seek(0)
+        f.write(text)
+        f.truncate()
+
+
+# --- configuration ---------------------------------------------------------
+
+def load_projects():
+    """Marker files written by podman_compose::project, one per project:
+    <user>\t<compose_dir>\t<explicit compose project name or ''>"""
+    scopes = {}
+    for path in sorted(glob.glob(os.path.join(CONF_DIR, "*.conf"))):
+        fields = (read(path) or "").rstrip("\n").split("\t")
+        if len(fields) < 2:
+            continue
+        user, cdir = fields[0], fields[1]
+        name = fields[2] if len(fields) > 2 else ""
+        scopes.setdefault(user, []).append((cdir, name))
+    return scopes
+
+
+def project_candidates(cdir, name):
+    if name:
+        return {name}
+    base = os.path.basename(cdir.rstrip("/"))
+    # podman-compose normalised project names differently across releases
+    return {base, base.lower(), re.sub(r"[^a-z0-9]", "", base.lower())}
+
+
+def belongs(labels, projects):
+    wdir = labels.get("com.docker.compose.project.working_dir")
+    proj = labels.get("com.docker.compose.project") \
+        or labels.get("io.podman.compose.project")
+    for cdir, name in projects:
+        if wdir and os.path.realpath(wdir) == os.path.realpath(cdir):
+            return True
+        if not wdir and proj in project_candidates(cdir, name):
+            return True
+    return False
+
+
+# --- per-container resolv.conf --------------------------------------------
+
+def sync_containers(user, projects, desired):
+    """Rewrite each matching container's resolv.conf. Returns True when any
+    of them sits on a gateway network (i.e. depends on aardvark/dnsname)."""
+    r = run(["podman", "ps", "-q", "--no-trunc"], user)
+    if r.returncode != 0:
+        log("WARN podman ps failed: {}".format(r.stderr.strip()))
+        return False
+    ids = r.stdout.split()
+    if not ids:
+        return False
+    r = run(["podman", "inspect", "--type", "container"] + ids, user)
+    if r.returncode != 0:
+        log("WARN podman inspect failed: {}".format(r.stderr.strip()))
+        return False
+
+    uses_netns_dns = False
+    for c in json.loads(r.stdout or "[]"):
+        labels = (c.get("Config") or {}).get("Labels") or {}
+        if not belongs(labels, projects):
+            continue
+        cname = c.get("Name", c.get("Id", "?")[:12]).lstrip("/")
+        keep = set((c.get("HostConfig") or {}).get("Dns") or [])
+        nets = ((c.get("NetworkSettings") or {}).get("Networks") or {})
+        for n in nets.values():
+            for gw in (n.get("Gateway"), n.get("IPv6Gateway")):
+                if gw:
+                    keep.add(gw)
+                    uses_netns_dns = True
+        path = c.get("ResolvConfPath")
+        text = read(path) if path else None
+        if text is None:
+            continue
+        new = render(text, desired, keep)
+        if new is None:
+            continue
+        try:
+            rewrite_in_place(path, new)
+            log("updated {} ({}): {}".format(
+                cname, path, " ".join(desired)))
+        except OSError as e:
+            log("ERROR {}: cannot rewrite {}: {}".format(cname, path, e))
+    return uses_netns_dns
+
+
+# --- rootless netns resolv.conf --------------------------------------------
+
+def unshare_netns(user, cmd, stdin=None):
+    """Run cmd inside the user's rootless netns (podman 4+: --rootless-netns,
+    podman 3.x: --rootless-cni)."""
+    r = None
+    for flag in ("--rootless-netns", "--rootless-cni"):
+        r = run(["podman", "unshare", flag] + cmd, user, stdin)
+        if r.returncode == 0 or "unknown flag" not in r.stderr:
+            return r
+    return r
+
+
+def sync_rootless_netns(user, desired):
+    """The rootless netns carries its own resolv.conf copy, which aardvark /
+    dnsmasq read for upstream servers. Returns True if it was rewritten."""
+    try:
+        host = os.stat(HOST_RESOLV)
+    except OSError:
+        return False
+    r = unshare_netns(user, ["sh", "-c",
+                             "stat -L -c '%d:%i' /etc/resolv.conf && "
+                             "cat /etc/resolv.conf"])
+    if r is None or r.returncode != 0:
+        log("WARN {}: cannot read rootless netns resolv.conf: {}".format(
+            user.pw_name, (r.stderr if r else "").strip()))
+        return False
+    ident, _, text = r.stdout.partition("\n")
+    if ident.strip() == "{}:{}".format(host.st_dev, host.st_ino):
+        return False  # not a copy - it is the host file itself
+    new = render(text, desired, set())
+    if new is None:
+        return False
+    r = unshare_netns(user, ["sh", "-c", "cat > /etc/resolv.conf"], new)
+    if r.returncode != 0:
+        log("ERROR {}: cannot rewrite rootless netns resolv.conf: {}".format(
+            user.pw_name, r.stderr.strip()))
+        return False
+    log("updated rootless netns of {}: {}".format(
+        user.pw_name, " ".join(desired)))
+    return True
+
+
+# --- aardvark-dns ----------------------------------------------------------
+
+def aardvark_procs(uid):
+    procs = []
+    for status in glob.glob("/proc/[0-9]*/status"):
+        pid = int(status.split("/")[2])
+        txt = read(status) or ""
+        if not re.search(r"^Name:\s+aardvark-dns$", txt, re.M):
+            continue
+        m = re.search(r"^Uid:\s+(\d+)", txt, re.M)
+        if m and int(m.group(1)) == uid:
+            procs.append(pid)
+    return procs
+
+
+def proc_start_time(pid):
+    stat = read("/proc/{}/stat".format(pid)) or ""
+    fields = stat.rpartition(")")[2].split()
+    if len(fields) < 20:
+        return 0
+    boot = 0
+    for line in (read("/proc/stat") or "").splitlines():
+        if line.startswith("btime "):
+            boot = int(line.split()[1])
+    return boot + int(fields[19]) / os.sysconf("SC_CLK_TCK")
+
+
+def aardvark_version(pid):
+    try:
+        exe = os.readlink("/proc/{}/exe".format(pid))
+    except OSError:
+        return None
+    r = run([exe, "--version"])
+    m = re.search(r"(\d+)\.(\d+)", r.stdout)
+    return (int(m.group(1)), int(m.group(2))) if m else None
+
+
+def restart_aardvark(pid, user):
+    raw = read("/proc/{}/cmdline".format(pid)) or ""
+    argv = [a for a in raw.split("\0") if a]
+    try:
+        argv[0] = os.readlink("/proc/{}/exe".format(pid))
+    except OSError:
+        pass
+    if not argv or "run" not in argv:
+        log("WARN aardvark-dns {}: unexpected cmdline {!r}".format(pid, argv))
+        return
+    os.kill(pid, signal.SIGTERM)
+    for _ in range(50):
+        if not os.path.exists("/proc/{}".format(pid)):
+            break
+        time.sleep(0.1)
+    # `aardvark-dns ... run` daemonises itself and returns once it serves.
+    if user is None:
+        r = run(argv)
+    else:
+        r = unshare_netns(user, argv)
+    if r.returncode != 0:
+        log("ERROR aardvark-dns restart failed ({}): {}".format(
+            " ".join(argv), r.stderr.strip()))
+    else:
+        log("restarted aardvark-dns (pid {}) to load new upstreams".format(
+            pid))
+
+
+def refresh_aardvark(uid, user, changed):
+    for pid in aardvark_procs(uid):
+        ver = aardvark_version(pid)
+        stale = changed if changed is not None \
+            else proc_start_time(pid) < host_resolv_mtime()
+        if not stale:
+            continue
+        if ver is not None and ver >= (1, 12):
+            os.kill(pid, signal.SIGHUP)
+            log("sent SIGHUP to aardvark-dns {} ({}.{})".format(pid, *ver))
+        elif RESTART_AARDVARK:
+            restart_aardvark(pid, user)
+        else:
+            log("WARN aardvark-dns {} too old to reload upstreams and "
+                "restart_aardvark is disabled".format(pid))
+
+
+# --- main ------------------------------------------------------------------
+
+def main():
+    desired = host_nameservers()
+    if not desired:
+        log("no usable host nameservers found - leaving containers alone")
+        return 0
+    try:
+        state = json.loads(read(STATE_FILE) or "{}")
+    except ValueError:
+        state = {}
+
+    for scope, projects in sorted(load_projects().items()):
+        if scope == "root":
+            user, uid = None, 0
+        else:
+            try:
+                user = pwd.getpwnam(scope)
+            except KeyError:
+                continue
+            uid = user.pw_uid
+            if not os.path.isdir("/run/user/{}".format(uid)):
+                continue  # user manager not running -> no containers
+        try:
+            uses_netns_dns = sync_containers(user, projects, desired)
+            netns_changed = False
+            if user is not None and uses_netns_dns:
+                netns_changed = sync_rootless_netns(user, desired)
+            # Unknown previous state (first run): fall back to comparing the
+            # aardvark start time with the resolv.conf mtime.
+            changed = None if scope not in state \
+                else state[scope] != desired
+            if netns_changed:
+                changed = True
+            refresh_aardvark(uid, user, changed)
+            state[scope] = desired
+        except Exception as e:  # keep other scopes going
+            log("ERROR scope {}: {}".format(scope, e))
+
+    os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
+    tmp = STATE_FILE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(state, f)
+    os.replace(tmp, STATE_FILE)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

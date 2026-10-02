@@ -1,0 +1,16 @@
+<%- |
+  Array[Stdlib::Absolutepath] $watch_paths,
+| -%>
+# Managed by Puppet - DO NOT EDIT
+
+[Unit]
+Description=Watch host resolv.conf for podman DNS sync
+
+[Path]
+<% $watch_paths.each |$p| { -%>
+PathChanged=<%= $p %>
+<% } -%>
+Unit=podman-dns-sync.service
+
+[Install]
+WantedBy=paths.target
