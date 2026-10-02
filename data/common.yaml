@@ -13,3 +13,9 @@ podman_compose::root_compose_dir: '/opt/compose'
 podman_compose::projects: {}
 podman_compose::cron_projects: {}
 podman_compose::autoscalers: {}
+podman_compose::dns_sync: true
+podman_compose::dns_sync_watch_paths:
+  - '/etc/resolv.conf'
+  - '/run/systemd/resolve/resolv.conf'
+podman_compose::dns_sync_interval: '5min'
+podman_compose::dns_sync_restart_aardvark: true

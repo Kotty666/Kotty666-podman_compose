@@ -36,6 +36,21 @@
 # @param autoscalers
 #   Hash of podman_compose::autoscale resources for CPU-based scaling of
 #   individual services of existing projects.
+# @param dns_sync
+#   Keep running containers' DNS servers in sync with the host when the host
+#   resolv.conf changes, without restarting the containers (see
+#   podman_compose::dns_sync). Can be disabled per project via the project's
+#   `dns_sync` parameter. Cron projects are not affected: they start fresh on
+#   every run anyway.
+# @param dns_sync_watch_paths
+#   Files watched (inotify via a systemd path unit) to trigger a sync.
+# @param dns_sync_interval
+#   Fallback interval (systemd time span) of the periodic sync timer.
+# @param dns_sync_restart_aardvark
+#   aardvark-dns older than 1.12 only reads its upstream servers on start.
+#   When true, such a process is restarted on a DNS change (brief DNS blip for
+#   container name resolution; containers keep running). When false, only a
+#   warning is logged.
 #
 # @example Basic usage via Hiera
 #   include podman_compose
@@ -79,8 +94,13 @@ class podman_compose (
   Hash[String[1], Hash]           $projects,
   Hash[String[1], Hash]           $cron_projects,
   Hash[String[1], Hash]           $autoscalers,
+  Boolean                         $dns_sync,
+  Array[Stdlib::Absolutepath, 1]  $dns_sync_watch_paths,
+  String[1]                       $dns_sync_interval,
+  Boolean                         $dns_sync_restart_aardvark,
 ) {
   contain podman_compose::install
+  contain podman_compose::dns_sync
 
   $projects.each |String $name, Hash $config| {
     podman_compose::project { $name:

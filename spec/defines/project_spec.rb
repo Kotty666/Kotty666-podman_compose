@@ -445,6 +445,62 @@ describe 'podman_compose::project' do
             .with_command(%r{down && .* up -d --remove-orphans})
         end
       end
+
+      context 'dns_sync marker' do
+        let(:marker) { '/etc/podman-compose/dns-sync.d/demo.conf' }
+
+        context 'rootful default registers the project' do
+          let(:params) { rootful_compose_params }
+
+          it { is_expected.to compile.with_all_deps }
+
+          it do
+            is_expected.to contain_file(marker)
+              .with_ensure('file')
+              .with_content("root\t/opt/compose/demo\t\n")
+          end
+        end
+
+        context 'rootless with explicit compose name' do
+          let(:params) do
+            {
+              'rootless'     => true,
+              'user'         => 'app',
+              'subuid_start' => 100_000,
+              'subgid_start' => 100_000,
+              'compose'      => {
+                'name'     => 'custom',
+                'services' => { 'web' => { 'image' => 'nginx:1.27' } },
+              },
+            }
+          end
+
+          it do
+            is_expected.to contain_file(marker)
+              .with_content("app\t/home/app/compose/demo\tcustom\n")
+          end
+        end
+
+        context 'project opts out' do
+          let(:params) { rootful_compose_params.merge('dns_sync' => false) }
+
+          it { is_expected.to contain_file(marker).with_ensure('absent') }
+        end
+
+        context 'globally disabled' do
+          let(:pre_condition) { 'class { "podman_compose": dns_sync => false }' }
+          let(:params) { rootful_compose_params }
+
+          it { is_expected.to compile.with_all_deps }
+          it { is_expected.to contain_file(marker).with_ensure('absent') }
+        end
+
+        context 'ensure => absent' do
+          let(:params) { rootful_compose_params.merge('ensure' => 'absent') }
+
+          it { is_expected.to contain_file(marker).with_ensure('absent') }
+        end
+      end
     end
   end
 end
