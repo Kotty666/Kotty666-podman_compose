@@ -1,0 +1,16 @@
+<%- |
+  String[1] $interval,
+| -%>
+# Managed by Puppet - DO NOT EDIT
+# Fallback for changes the path unit cannot see (e.g. missed inotify events).
+
+[Unit]
+Description=Periodic podman DNS sync
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=<%= $interval %>
+Unit=podman-dns-sync.service
+
+[Install]
+WantedBy=timers.target

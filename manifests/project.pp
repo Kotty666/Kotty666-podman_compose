@@ -94,6 +94,11 @@
 #   with any other user's range on the same host.
 # @param subgid_count
 #   Number of subordinate GIDs allocated to the project user (default 65536).
+# @param dns_sync
+#   Let podman_compose::dns_sync push host nameserver changes into this
+#   project's running containers. Only effective while the global
+#   `podman_compose::dns_sync` is enabled. Set to false for projects that
+#   manage DNS themselves.
 #
 # @example Hiera definition
 #   podman_compose::projects:
@@ -137,6 +142,7 @@ define podman_compose::project (
   Integer                             $subuid_count         = 65536,
   Optional[Integer]                   $subgid_start         = undef,
   Integer                             $subgid_count         = 65536,
+  Boolean                             $dns_sync             = true,
 ) {
   require podman_compose::install
 
@@ -234,6 +240,26 @@ define podman_compose::project (
   # cwd (usually /root); without an explicit cwd a non-root `exec` fails with
   # "cannot chdir to /root: Permission denied".
   $_safe_cwd = '/tmp'
+
+  # --- DNS sync registration ---
+  # One marker per project, read by the podman-dns-sync helper:
+  # <user> TAB <compose_dir> TAB <explicit compose project name>. The explicit name
+  # is only needed for old podman-compose releases that lack the
+  # working_dir label.
+  $_dns_sync_marker = "/etc/podman-compose/dns-sync.d/${name}.conf"
+  if $podman_compose::dns_sync and $dns_sync and $ensure != 'absent' {
+    file { $_dns_sync_marker:
+      ensure  => file,
+      owner   => 'root',
+      group   => 'root',
+      mode    => '0644',
+      content => "${_user}\t${_compose_dir}\t${pick_default($compose['name'], '')}\n",
+    }
+  } else {
+    file { $_dns_sync_marker:
+      ensure => absent,
+    }
+  }
 
   if $ensure == 'absent' {
     # A project created before compose.yml became the default may still carry

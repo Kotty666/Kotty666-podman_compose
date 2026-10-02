@@ -12,6 +12,7 @@
 
 #### Private Classes
 
+* `podman_compose::dns_sync`: Push host nameserver changes into running podman-compose containers
 * `podman_compose::install`: Install podman and podman-compose
 
 ### Defined types
@@ -90,6 +91,10 @@ The following parameters are available in the `podman_compose` class:
 * [`projects`](#-podman_compose--projects)
 * [`cron_projects`](#-podman_compose--cron_projects)
 * [`autoscalers`](#-podman_compose--autoscalers)
+* [`dns_sync`](#-podman_compose--dns_sync)
+* [`dns_sync_watch_paths`](#-podman_compose--dns_sync_watch_paths)
+* [`dns_sync_interval`](#-podman_compose--dns_sync_interval)
+* [`dns_sync_restart_aardvark`](#-podman_compose--dns_sync_restart_aardvark)
 
 ##### <a name="-podman_compose--manage_package"></a>`manage_package`
 
@@ -179,6 +184,37 @@ Data type: `Hash[String[1], Hash]`
 
 Hash of podman_compose::autoscale resources for CPU-based scaling of
 individual services of existing projects.
+
+##### <a name="-podman_compose--dns_sync"></a>`dns_sync`
+
+Data type: `Boolean`
+
+Keep running containers' DNS servers in sync with the host when the host
+resolv.conf changes, without restarting the containers (see
+podman_compose::dns_sync). Can be disabled per project via the project's
+`dns_sync` parameter. Cron projects are not affected: they start fresh on
+every run anyway.
+
+##### <a name="-podman_compose--dns_sync_watch_paths"></a>`dns_sync_watch_paths`
+
+Data type: `Array[Stdlib::Absolutepath, 1]`
+
+Files watched (inotify via a systemd path unit) to trigger a sync.
+
+##### <a name="-podman_compose--dns_sync_interval"></a>`dns_sync_interval`
+
+Data type: `String[1]`
+
+Fallback interval (systemd time span) of the periodic sync timer.
+
+##### <a name="-podman_compose--dns_sync_restart_aardvark"></a>`dns_sync_restart_aardvark`
+
+Data type: `Boolean`
+
+aardvark-dns older than 1.12 only reads its upstream servers on start.
+When true, such a process is restarted on a DNS change (brief DNS blip for
+container name resolution; containers keep running). When false, only a
+warning is logged.
 
 ## Defined types
 
@@ -710,6 +746,7 @@ The following parameters are available in the `podman_compose::project` defined 
 * [`subuid_count`](#-podman_compose--project--subuid_count)
 * [`subgid_start`](#-podman_compose--project--subgid_start)
 * [`subgid_count`](#-podman_compose--project--subgid_count)
+* [`dns_sync`](#-podman_compose--project--dns_sync)
 
 ##### <a name="-podman_compose--project--compose"></a>`compose`
 
@@ -948,6 +985,17 @@ Data type: `Integer`
 Number of subordinate GIDs allocated to the project user (default 65536).
 
 Default value: `65536`
+
+##### <a name="-podman_compose--project--dns_sync"></a>`dns_sync`
+
+Data type: `Boolean`
+
+Let podman_compose::dns_sync push host nameserver changes into this
+project's running containers. Only effective while the global
+`podman_compose::dns_sync` is enabled. Set to false for projects that
+manage DNS themselves.
+
+Default value: `true`
 
 ### <a name="podman_compose--registry"></a>`podman_compose::registry`
 

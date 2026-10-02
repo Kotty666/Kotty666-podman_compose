@@ -1,4 +1,4 @@
-{:	rooto:"YARD::CodeObjects::RootObject:@childrenIC:&YARD::CodeObjects::CodeObjectList[o:4OpenvoxStrings::Yard::CodeObjects::DefinedTypes;IC;[
+{:	rooto:"YARD::CodeObjects::RootObject:@childrenIC:&YARD::CodeObjects::CodeObjectList[o:4OpenvoxStrings::Yard::CodeObjects::DefinedTypes;IC;[
 o:3OpenvoxStrings::Yard::CodeObjects::DefinedType:@statemento:@OpenvoxStrings::Yard::Parsers::Puppet::DefinedTypeStatement:
 @fileI"manifests/cron.pp:ET:@sourceI"T/define podman_compose::cron (
   Hash                                $compose,
@@ -838,7 +838,7 @@ Must not overlap with any other user's range on the same host.;T;I"subgid_st
 ;"I"
 param;F;#I"GNumber of subordinate GIDs allocated to this user (default 65536).;T;I"subgid_count;T;$[@ä;@^o;!
 ;"I"api;F;#@[;0;$0;@^;%[ ;&@ª;'0;@^;F;:@b;;i ;<@;=I"/puppet_defined_types::podman_compose::user;Fo;
-;o;;I"manifests/project.pp;T;I"^define podman_compose::project (
+;o;;I"manifests/project.pp;T;I"adefine podman_compose::project (
   Hash                                $compose,
   Podman_compose::Ensure              $ensure               = 'running',
   Boolean                             $rootless             = true,
@@ -864,6 +864,7 @@ param;F;#I"GNumber of subordinate GIDs allocated to this user (default 65536).
   Integer                             $subuid_count         = 65536,
   Optional[Integer]                   $subgid_start         = undef,
   Integer                             $subgid_count         = 65536,
+  Boolean                             $dns_sync             = true,
 ) {
   require podman_compose::install
 
@@ -961,6 +962,26 @@ param;F;#I"GNumber of subordinate GIDs allocated to this user (default 65536).
   # cwd (usually /root); without an explicit cwd a non-root `exec` fails with
   # "cannot chdir to /root: Permission denied".
   $_safe_cwd = '/tmp'
+
+  # --- DNS sync registration ---
+  # One marker per project, read by the podman-dns-sync helper:
+  # <user> TAB <compose_dir> TAB <explicit compose project name>. The explicit name
+  # is only needed for old podman-compose releases that lack the
+  # working_dir label.
+  $_dns_sync_marker = "/etc/podman-compose/dns-sync.d/${name}.conf"
+  if $podman_compose::dns_sync and $dns_sync and $ensure != 'absent' {
+    file { $_dns_sync_marker:
+      ensure  => file,
+      owner   => 'root',
+      group   => 'root',
+      mode    => '0644',
+      content => "${_user}\t${_compose_dir}\t${pick_default($compose['name'], '')}\n",
+    }
+  } else {
+    file { $_dns_sync_marker:
+      ensure => absent,
+    }
+  }
 
   if $ensure == 'absent' {
     # A project created before compose.yml became the default may still carry
@@ -1408,7 +1429,7 @@ param;F;#I"GNumber of subordinate GIDs allocated to this user (default 65536).
       }
     }
   }
-};T;iw;o;;F;i ;iv;[o;;I"compose;T;I"	Hash;To;;I"ensure;T;I"Podman_compose::Ensure;T;I"'running';To;;I"rootless;T;I"Boolean;T;I"	true;To;;I"	user;T;I"Optional[String[1]];T;I"
+};T;i|;o;;F;i ;i{;[o;;I"compose;T;I"	Hash;To;;I"ensure;T;I"Podman_compose::Ensure;T;I"'running';To;;I"rootless;T;I"Boolean;T;I"	true;To;;I"	user;T;I"Optional[String[1]];T;I"
 undef;To;;I"
 group;T;I"Optional[String[1]];T;I"
 undef;To;;I"manage_user;T;I"Boolean;T;I"	true;To;;I"compose_dir;T;I"#Optional[Stdlib::Absolutepath];T;I"
@@ -1417,9 +1438,9 @@ scale;T;I" Hash[String[1], Integer[1]];T;I"{};To;;I"pull_on_start;
 undef;To;;I"subuid_count;T;I"Integer;T;I"
 65536;To;;I"subgid_start;T;I"Optional[Integer];T;I"
 undef;To;;I"subgid_count;T;I"Integer;T;I"
-65536;T;I"podman_compose::project;F;IC;"†Creates the compose directory, renders the compose file from a Hash,
+65536;To;;I"dns_sync;T;I"Boolean;T;I"	true;T;I"podman_compose::project;F;IC;"†Creates the compose directory, renders the compose file from a Hash,
 optionally manages an .env file, and sets up a systemd service to
-keep the project running.;T;0;0;F; [ o;!
+keep the project running.;T;0;0;F; [!o;!
 ;"I"summary;F;#I"+Manage a single podman-compose project;T;0;$0;0o;!
 ;"I"
 param;F;#I"nThe compose file content as a Puppet Hash. Gets rendered to YAML.
@@ -1513,6 +1534,11 @@ param;F;#I"|Start of the subordinate GID range for the project user. Must not 
 with any other user's range on the same host.;T;I"subgid_start;T;$0;0o;!
 ;"I"
 param;F;#I"NNumber of subordinate GIDs allocated to the project user (default 65536).;T;I"subgid_count;T;$0;0o;!
+;"I"
+param;F;#I"ﬁLet podman_compose::dns_sync push host nameserver changes into this
+project's running containers. Only effective while the global
+`podman_compose::dns_sync` is enabled. Set to false for projects that
+manage DNS themselves.;T;I"dns_sync;T;$0;0o;!
 ;"I"example;F;#I"gpodman_compose::projects:
   traefik:
     rootless: false
@@ -1526,7 +1552,7 @@ param;F;#I"NNumber of subordinate GIDs allocated to the project user (default 
           volumes:
             - "/var/run/podman/podman.sock:/var/run/docker.sock:ro"
             - "./config:/etc/traefik:ro"
-          restart: unless-stopped;T;I"Hiera definition;T;$0;0;%[ ;&I"å@summary Manage a single podman-compose project
+          restart: unless-stopped;T;I"Hiera definition;T;$0;0;%[ ;&I"É@summary Manage a single podman-compose project
 
 Creates the compose directory, renders the compose file from a Hash,
 optionally manages an .env file, and sets up a systemd service to
@@ -1622,6 +1648,11 @@ keep the project running.
   with any other user's range on the same host.
 @param subgid_count
   Number of subordinate GIDs allocated to the project user (default 65536).
+@param dns_sync
+  Let podman_compose::dns_sync push host nameserver changes into this
+  project's running containers. Only effective while the global
+  `podman_compose::dns_sync` is enabled. Set to false for projects that
+  manage DNS themselves.
 
 @example Hiera definition
   podman_compose::projects:
@@ -1638,9 +1669,9 @@ keep the project running.
               - "/var/run/podman/podman.sock:/var/run/docker.sock:ro"
               - "./config:/etc/traefik:ro"
             restart: unless-stopped
-;T;'0;[[@0[@@[@@[@ @"[@$@&[@(@*[@,@.[@0@2[@4@6[@8@:[@<@>[@@@B[@D@F[@H@J[@L@N[@P@R[@T@V[@X@Z[@\@^[@`@b[@d@f[@h@j[@l@n[@p@r[@t@v;IC;[ ;(@;)IC;[ ;(@;*IC;[ ;(@;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@iw;3T;:podman_compose::project;5;6;7;8; [ ;9{ ;IC;"†Creates the compose directory, renders the compose file from a Hash,
+;T;'0;[[@0[@@[@@[@ @"[@$@&[@(@*[@,@.[@0@2[@4@6[@8@:[@<@>[@@@B[@D@F[@H@J[@L@N[@P@R[@T@V[@X@Z[@\@^[@`@b[@d@f[@h@j[@l@n[@p@r[@t@v[@x@z;IC;[ ;(@;)IC;[ ;(@;*IC;[ ;(@;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@i|;3T;:podman_compose::project;5;6;7;8; [ ;9{ ;IC;"†Creates the compose directory, renders the compose file from a Hash,
 optionally manages an .env file, and sets up a systemd service to
-keep the project running.;T; [!o;!
+keep the project running.;T; ["o;!
 ;"I"summary;F;#I"+Manage a single podman-compose project;T;0;$0;@o;!
 ;"I"
 param;F;#I"nThe compose file content as a Puppet Hash. Gets rendered to YAML.
@@ -1734,6 +1765,11 @@ param;F;#I"|Start of the subordinate GID range for the project user. Must not 
 with any other user's range on the same host.;T;I"subgid_start;T;$[@q;@o;!
 ;"I"
 param;F;#I"NNumber of subordinate GIDs allocated to the project user (default 65536).;T;I"subgid_count;T;$[@u;@o;!
+;"I"
+param;F;#I"ﬁLet podman_compose::dns_sync push host nameserver changes into this
+project's running containers. Only effective while the global
+`podman_compose::dns_sync` is enabled. Set to false for projects that
+manage DNS themselves.;T;I"dns_sync;T;$[@y;@o;!
 ;"I"example;F;#I"gpodman_compose::projects:
   traefik:
     rootless: false
@@ -1748,7 +1784,7 @@ param;F;#I"NNumber of subordinate GIDs allocated to the project user (default 
             - "/var/run/podman/podman.sock:/var/run/docker.sock:ro"
             - "./config:/etc/traefik:ro"
           restart: unless-stopped;T;I"Hiera definition;T;$0;@o;!
-;"I"api;F;#@[;0;$0;@;%[ ;&@Ê;'0;@;F;:@;;i ;<@;=I"2puppet_defined_types::podman_compose::project;Fo;
+;"I"api;F;#@[;0;$0;@;%[ ;&@Ó;'0;@;F;:@;;i ;<@;=I"2puppet_defined_types::podman_compose::project;Fo;
 ;o;;I"manifests/registry.pp;T;I"Udefine podman_compose::registry (
   String[1]                  $server,
   String[1]                  $username,
@@ -1941,46 +1977,46 @@ parameter on podman_compose::project / podman_compose::cron.
         registry.example.com:
           username: deploy
           password: ENC[PKCS7,...]
-;T;'0;[[@û0[@°0[@§0[@ß@©[@´@≠[@Ø@±[@≥@µ;IC;[ ;(@ó;)IC;[ ;(@ó;*IC;[ ;(@ó;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@ôi4;3T;:podman_compose::registry;5;6;7;8; [ ;9{ ;IC;"`Runs `podman login` with credentials piped via stdin (no password
+;T;'0;[[@¨0[@Ø0[@≤0[@µ@∑[@π@ª[@Ω@ø[@¡@√;IC;[ ;(@•;)IC;[ ;(@•;*IC;[ ;(@•;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@ßi4;3T;:podman_compose::registry;5;6;7;8; [ ;9{ ;IC;"`Runs `podman login` with credentials piped via stdin (no password
 in the process list). A SHA256 sentinel file tracks credential
 changes ‚Äî if username or password change in Hiera, the login is
 re-executed on the next Puppet run.
 
 Can be used standalone or auto-created via the `registries`
 parameter on podman_compose::project / podman_compose::cron.;T; [o;!
-;"I"summary;F;#I":Manage a container registry login for a specific user;T;0;$0;@óo;!
+;"I"summary;F;#I":Manage a container registry login for a specific user;T;0;$0;@•o;!
 ;"I"
-param;F;#I"<Registry FQDN (e.g. 'registry.example.com', 'ghcr.io').;T;I"server;T;$[@ü;@óo;!
+param;F;#I"<Registry FQDN (e.g. 'registry.example.com', 'ghcr.io').;T;I"server;T;$[@≠;@•o;!
 ;"I"
-param;F;#I"%Registry username or token name.;T;I"username;T;$[@¢;@óo;!
+param;F;#I"%Registry username or token name.;T;I"username;T;$[@∞;@•o;!
 ;"I"
-param;F;#I"3Registry password or access token (Sensitive).;T;I"password;T;$[@•;@óo;!
+param;F;#I"3Registry password or access token (Sensitive).;T;I"password;T;$[@≥;@•o;!
 ;"I"
-param;F;#I"@System user to authenticate. Determines auth.json location.;T;I"	user;T;$[@®;@óo;!
+param;F;#I"@System user to authenticate. Determines auth.json location.;T;I"	user;T;$[@∂;@•o;!
 ;"I"
-param;F;#I"+Whether the user runs rootless podman.;T;I"rootless;T;$[@¨;@óo;!
+param;F;#I"+Whether the user runs rootless podman.;T;I"rootless;T;$[@∫;@•o;!
 ;"I"
-param;F;#I"B'present' to log in, 'absent' to log out and remove sentinel.;T;I"ensure;T;$[@∞;@óo;!
+param;F;#I"B'present' to log in, 'absent' to log out and remove sentinel.;T;I"ensure;T;$[@æ;@•o;!
 ;"I"
 param;F;#I"HTTP(S) proxy environment variables (e.g.
 { 'HTTP_PROXY' => 'http://proxy:3128', 'HTTPS_PROXY' => ..., 'NO_PROXY' => ... })
 injected into the `podman login` exec so authentication to a registry
-reachable only through a forward proxy works. Empty hash (default) = no proxy.;T;I"proxy_env;T;$[@¥;@óo;!
+reachable only through a forward proxy works. Empty hash (default) = no proxy.;T;I"proxy_env;T;$[@¬;@•o;!
 ;"I"example;F;#I" podman_compose::registry { 'appuser@registry.example.com':
   server   => 'registry.example.com',
   username => 'deploy',
   password => Sensitive('s3cret'),
   user     => 'appuser',
   rootless => true,
-};T;I"Standalone usage;T;$0;@óo;!
+};T;I"Standalone usage;T;$0;@•o;!
 ;"I"example;F;#I"öpodman_compose::projects:
   myapp:
     user: appuser
     registries:
       registry.example.com:
         username: deploy
-        password: ENC[PKCS7,...];T;I"-Via Hiera (auto-created by project/cron);T;$0;@óo;!
-;"I"api;F;#@[;0;$0;@ó;%[ ;&@·;'0;@ó;F;:@õ;;i ;<@;=I"3puppet_defined_types::podman_compose::registry;Fo;
+        password: ENC[PKCS7,...];T;I"-Via Hiera (auto-created by project/cron);T;$0;@•o;!
+;"I"api;F;#@[;0;$0;@•;%[ ;&@Ô;'0;@•;F;:@©;;i ;<@;=I"3puppet_defined_types::podman_compose::registry;Fo;
 ;o;;I"manifests/autoscale.pp;T;I"⁄ define podman_compose::autoscale (
   String[1]                           $service,
   String[1]                           $project              = $name,
@@ -2379,7 +2415,7 @@ statically publish a colliding host port (see `podman_compose::project`'s
     interval     => 30,
     cooldown     => 120,
   }
-;T;'0;[[@10[@4@6[@8@:[@<@>[@@@B[@D@F[@H@J[@L@N[@P@R[@T@V[@X@Z[@\@^[@`@b[@d@f[@h@j[@l@n[@p@r[@t@v;IC;[ ;(@*;)IC;[ ;(@*;*IC;[ ;(@*;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@,iY;3T;:podman_compose::autoscale;5;6;7;8; [ ;9{ ;IC;"‚Deploys a small long-running Python daemon (a systemd service with
+;T;'0;[[@?0[@B@D[@F@H[@J@L[@N@P[@R@T[@V@X[@Z@\[@^@`[@b@d[@f@h[@j@l[@n@p[@r@t[@v@x[@z@|[@~@Ä[@Ç@Ñ;IC;[ ;(@8;)IC;[ ;(@8;*IC;[ ;(@8;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@:iY;3T;:podman_compose::autoscale;5;6;7;8; [ ;9{ ;IC;"‚Deploys a small long-running Python daemon (a systemd service with
 `Restart=always`) that periodically samples the average CPU usage across all
 running replicas of one compose service and scales it up or down between
 `min_replicas` and `max_replicas` via
@@ -2395,59 +2431,59 @@ fighting over the replica count, the referenced project MUST:
 The scaled service must also not set a fixed `container_name:` and must not
 statically publish a colliding host port (see `podman_compose::project`'s
 `scale` docs). Only stateless services should be autoscaled.;T; [o;!
-;"I"summary;F;#I"ACPU-based horizontal autoscaler for a single compose service;T;0;$0;@*o;!
+;"I"summary;F;#I"ACPU-based horizontal autoscaler for a single compose service;T;0;$0;@8o;!
 ;"I"
 param;F;#I"^Name of the compose service to scale. Must match a service in the project's
-compose file.;T;I"service;T;$[@2;@*o;!
+compose file.;T;I"service;T;$[@@;@8o;!
 ;"I"
 param;F;#I"•Name of the `podman_compose::project` (its title). Used to derive the
 compose directory and, by default, the Compose project name. Defaults to
-this resource's title.;T;I"project;T;$[@5;@*o;!
+this resource's title.;T;I"project;T;$[@C;@8o;!
 ;"I"
-param;F;#I"E'present' deploys the autoscaler, 'absent' stops and removes it.;T;I"ensure;T;$[@9;@*o;!
+param;F;#I"E'present' deploys the autoscaler, 'absent' stops and removes it.;T;I"ensure;T;$[@G;@8o;!
 ;"I"
-param;F;#I"KRun the daemon as an unprivileged user (systemd user unit) or as root.;T;I"rootless;T;$[@=;@*o;!
+param;F;#I"KRun the daemon as an unprivileged user (systemd user unit) or as root.;T;I"rootless;T;$[@K;@8o;!
 ;"I"
-param;F;#I"DSystem user owning the project. Required when rootless is true.;T;I"	user;T;$[@A;@*o;!
+param;F;#I"DSystem user owning the project. Required when rootless is true.;T;I"	user;T;$[@O;@8o;!
 ;"I"
 param;F;#I"3Primary group for the user. Defaults to $user.;T;I"
-group;T;$[@E;@*o;!
+group;T;$[@S;@8o;!
 ;"I"
 param;F;#I"èWhether to declare the system user resource. Defaults to false: the
 autoscaler is an add-on to an existing `podman_compose::project`, which
 already owns the user (with its subuid/subgid ranges). Only set true for a
 standalone deployment where no project declares the user ‚Äî in that case the
 user's subid ranges must be managed elsewhere (podman_compose::user default
-`manage_subid` requires them).;T;I"manage_user;T;$[@I;@*o;!
+`manage_subid` requires them).;T;I"manage_user;T;$[@W;@8o;!
 ;"I"
 param;F;#I"vAbsolute path to the project directory. Auto-derived from `project` if unset
-(mirrors `podman_compose::project`).;T;I"compose_dir;T;$[@M;@*o;!
+(mirrors `podman_compose::project`).;T;I"compose_dir;T;$[@[;@8o;!
 ;"I"
-param;F;#I"4Name of the compose file. Default: compose.yml.;T;I"compose_file_name;T;$[@Q;@*o;!
+param;F;#I"4Name of the compose file. Default: compose.yml.;T;I"compose_file_name;T;$[@_;@8o;!
 ;"I"
 param;F;#I"≥Override the Compose project name used to match containers by label. When
 unset the daemon derives it from the compose directory basename (lowercased),
-matching Compose's default.;T;I"compose_project;T;$[@U;@*o;!
+matching Compose's default.;T;I"compose_project;T;$[@c;@8o;!
 ;"I"
-param;F;#I"FLower bound on replica count. The daemon never scales below this.;T;I"min_replicas;T;$[@Y;@*o;!
+param;F;#I"FLower bound on replica count. The daemon never scales below this.;T;I"min_replicas;T;$[@g;@8o;!
 ;"I"
-param;F;#I"FUpper bound on replica count. The daemon never scales above this.;T;I"max_replicas;T;$[@];@*o;!
+param;F;#I"FUpper bound on replica count. The daemon never scales above this.;T;I"max_replicas;T;$[@k;@8o;!
 ;"I"
 param;F;#I"sAverage CPU percent (summed per container, as podman reports it) above which
-the service scales out by `step`.;T;I"cpu_high;T;$[@a;@*o;!
+the service scales out by `step`.;T;I"cpu_high;T;$[@o;@8o;!
 ;"I"
 param;F;#I"âAverage CPU percent below which the service scales in by `step`. Must be
-lower than `cpu_high` to leave a stable band and avoid flapping.;T;I"cpu_low;T;$[@e;@*o;!
+lower than `cpu_high` to leave a stable band and avoid flapping.;T;I"cpu_low;T;$[@s;@8o;!
 ;"I"
-param;F;#I"8How many replicas to add/remove per scaling action.;T;I"	step;T;$[@i;@*o;!
+param;F;#I"8How many replicas to add/remove per scaling action.;T;I"	step;T;$[@w;@8o;!
 ;"I"
-param;F;#I"!Seconds between CPU samples.;T;I"interval;T;$[@m;@*o;!
+param;F;#I"!Seconds between CPU samples.;T;I"interval;T;$[@{;@8o;!
 ;"I"
 param;F;#I"nMinimum seconds between two scaling actions, so a burst doesn't ratchet the
-count up and down repeatedly.;T;I"cooldown;T;$[@q;@*o;!
+count up and down repeatedly.;T;I"cooldown;T;$[@;@8o;!
 ;"I"
 param;F;#I"åHTTP(S) proxy environment variables set on the daemon's unit so the
-`up -d` (which may pull) can reach the registry through a forward proxy.;T;I"proxy_env;T;$[@u;@*o;!
+`up -d` (which may pull) can reach the registry through a forward proxy.;T;I"proxy_env;T;$[@É;@8o;!
 ;"I"example;F;#I"Ÿpodman_compose::autoscale { 'api':
   service      => 'api',
   user         => 'api',
@@ -2457,8 +2493,8 @@ param;F;#I"åHTTP(S) proxy environment variables set on the daemon's unit so t
   cpu_low      => 30,
   interval     => 30,
   cooldown     => 120,
-};T;I"EAutoscale the 'api' service of the 'api' project between 2 and 6;T;$0;@*o;!
-;"I"api;F;#@[;0;$0;@*;%[ ;&@ ;'0;@*;F;:@.;;i ;<@;=I"4puppet_defined_types::podman_compose::autoscale;F;(@;)IC;[ ;(@;*IC;[ ;(@;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[ ;3F;:puppet_defined_types;5;6;7:hidden; [ ;9{ ;IC;" ;T; [ ;%[ ;&I" ;T;'0;@;;i ;<@o:/OpenvoxStrings::Yard::CodeObjects::Classes;IC;[o:-OpenvoxStrings::Yard::CodeObjects::Class;o::OpenvoxStrings::Yard::Parsers::Puppet::ClassStatement;I"manifests/init.pp;T;I"éclass podman_compose (
+};T;I"EAutoscale the 'api' service of the 'api' project between 2 and 6;T;$0;@8o;!
+;"I"api;F;#@[;0;$0;@8;%[ ;&@ÿ;'0;@8;F;:@<;;i ;<@;=I"4puppet_defined_types::podman_compose::autoscale;F;(@;)IC;[ ;(@;*IC;[ ;(@;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[ ;3F;:puppet_defined_types;5;6;7:hidden; [ ;9{ ;IC;" ;T; [ ;%[ ;&I" ;T;'0;@;;i ;<@o:/OpenvoxStrings::Yard::CodeObjects::Classes;IC;[o:-OpenvoxStrings::Yard::CodeObjects::Class;o::OpenvoxStrings::Yard::Parsers::Puppet::ClassStatement;I"manifests/init.pp;T;I"ãclass podman_compose (
   Boolean                         $manage_package,
   String[1]                       $podman_package,
   Podman_compose::Install_method  $compose_install_method,
@@ -2473,8 +2509,13 @@ param;F;#I"åHTTP(S) proxy environment variables set on the daemon's unit so t
   Hash[String[1], Hash]           $projects,
   Hash[String[1], Hash]           $cron_projects,
   Hash[String[1], Hash]           $autoscalers,
+  Boolean                         $dns_sync,
+  Array[Stdlib::Absolutepath, 1]  $dns_sync_watch_paths,
+  String[1]                       $dns_sync_interval,
+  Boolean                         $dns_sync_restart_aardvark,
 ) {
   contain podman_compose::install
+  contain podman_compose::dns_sync
 
   $projects.each |String $name, Hash $config| {
     podman_compose::project { $name:
@@ -2493,8 +2534,8 @@ param;F;#I"åHTTP(S) proxy environment variables set on the daemon's unit so t
       * => $config,
     }
   }
-};T;iH;o;;F;i ;iG;[o;;I"manage_package;T;I"Boolean;To;;I"podman_package;T;I"String[1];To;;I"compose_install_method;T;I"#Podman_compose::Install_method;To;;I"compose_package;T;I"String[1];To;;I"compose_pip_package;T;I"String[1];To;;I"compose_ensure;T;I"String[1];To;;I"compose_binary;T;I"Stdlib::Absolutepath;To;;I"manage_systemd_container;T;I"Boolean;To;;I"systemd_container_package;T;I"String[1];To;;I"user_compose_dir_name;T;I"String[1];To;;I"root_compose_dir;T;I"Stdlib::Absolutepath;To;;I"projects;T;I"Hash[String[1], Hash];To;;I"cron_projects;T;I"Hash[String[1], Hash];To;;I"autoscalers;T;I"Hash[String[1], Hash];T;I"podman_compose;F:@parent_class0;IC;"~Installs podman and podman-compose, then iterates over projects defined
-in Hiera to create compose files and systemd services.;T;0;0;F; [o;!
+};T;iW;o;;F;i ;iV;[o;;I"manage_package;T;I"Boolean;To;;I"podman_package;T;I"String[1];To;;I"compose_install_method;T;I"#Podman_compose::Install_method;To;;I"compose_package;T;I"String[1];To;;I"compose_pip_package;T;I"String[1];To;;I"compose_ensure;T;I"String[1];To;;I"compose_binary;T;I"Stdlib::Absolutepath;To;;I"manage_systemd_container;T;I"Boolean;To;;I"systemd_container_package;T;I"String[1];To;;I"user_compose_dir_name;T;I"String[1];To;;I"root_compose_dir;T;I"Stdlib::Absolutepath;To;;I"projects;T;I"Hash[String[1], Hash];To;;I"cron_projects;T;I"Hash[String[1], Hash];To;;I"autoscalers;T;I"Hash[String[1], Hash];To;;I"dns_sync;T;I"Boolean;To;;I"dns_sync_watch_paths;T;I"#Array[Stdlib::Absolutepath, 1];To;;I"dns_sync_interval;T;I"String[1];To;;I"dns_sync_restart_aardvark;T;I"Boolean;T;I"podman_compose;F:@parent_class0;IC;"~Installs podman and podman-compose, then iterates over projects defined
+in Hiera to create compose files and systemd services.;T;0;0;F; [o;!
 ;"I"summary;F;#I"JInstall podman and podman-compose, manage compose projects from Hiera;T;0;$0;0o;!
 ;"I"
 param;F;#I"7Whether to manage the podman package installation.;T;I"manage_package;T;$0;0o;!
@@ -2529,6 +2570,21 @@ param;F;#I"HHash of podman_compose::cron resources for scheduled/periodic jobs
 ;"I"
 param;F;#I"sHash of podman_compose::autoscale resources for CPU-based scaling of
 individual services of existing projects.;T;I"autoscalers;T;$0;0o;!
+;"I"
+param;F;#I")Keep running containers' DNS servers in sync with the host when the host
+resolv.conf changes, without restarting the containers (see
+podman_compose::dns_sync). Can be disabled per project via the project's
+`dns_sync` parameter. Cron projects are not affected: they start fresh on
+every run anyway.;T;I"dns_sync;T;$0;0o;!
+;"I"
+param;F;#I"GFiles watched (inotify via a systemd path unit) to trigger a sync.;T;I"dns_sync_watch_paths;T;$0;0o;!
+;"I"
+param;F;#I"FFallback interval (systemd time span) of the periodic sync timer.;T;I"dns_sync_interval;T;$0;0o;!
+;"I"
+param;F;#I"Ïaardvark-dns older than 1.12 only reads its upstream servers on start.
+When true, such a process is restarted on a DNS change (brief DNS blip for
+container name resolution; containers keep running). When false, only a
+warning is logged.;T;I"dns_sync_restart_aardvark;T;$0;0o;!
 ;"I"example;F;#I"include podman_compose;T;I"Basic usage via Hiera;T;$0;0o;!
 ;"I"example;F;#I"∫podman_compose::projects:
   myapp:
@@ -2551,7 +2607,7 @@ podman_compose::cron_projects:
       services:
         restic:
           image: "restic/restic:0.17"
-          command: ["backup", "/data"];T;I"Hiera data;T;$0;0;%[ ;&I"∫@summary Install podman and podman-compose, manage compose projects from Hiera
+          command: ["backup", "/data"];T;I"Hiera data;T;$0;0;%[ ;&I"“@summary Install podman and podman-compose, manage compose projects from Hiera
 
 Installs podman and podman-compose, then iterates over projects defined
 in Hiera to create compose files and systemd services.
@@ -2589,6 +2645,21 @@ in Hiera to create compose files and systemd services.
 @param autoscalers
   Hash of podman_compose::autoscale resources for CPU-based scaling of
   individual services of existing projects.
+@param dns_sync
+  Keep running containers' DNS servers in sync with the host when the host
+  resolv.conf changes, without restarting the containers (see
+  podman_compose::dns_sync). Can be disabled per project via the project's
+  `dns_sync` parameter. Cron projects are not affected: they start fresh on
+  every run anyway.
+@param dns_sync_watch_paths
+  Files watched (inotify via a systemd path unit) to trigger a sync.
+@param dns_sync_interval
+  Fallback interval (systemd time span) of the periodic sync timer.
+@param dns_sync_restart_aardvark
+  aardvark-dns older than 1.12 only reads its upstream servers on start.
+  When true, such a process is restarted on a DNS change (brief DNS blip for
+  container name resolution; containers keep running). When false, only a
+  warning is logged.
 
 @example Basic usage via Hiera
   include podman_compose
@@ -2616,43 +2687,58 @@ in Hiera to create compose files and systemd services.
           restic:
             image: "restic/restic:0.17"
             command: ["backup", "/data"]
-;T;'0;[[@h0[@k0[@n0[@q0[@t0[@w0[@z0[@}0[@Ä0[@É0[@Ü0[@â0[@å0[@è0;IC;[ ;(@a;)IC;[ ;(@a;*IC;[ ;(@a;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@ciH;3T;:podman_compose;5;6;7;8; [ ;9{ ;IC;"~Installs podman and podman-compose, then iterates over projects defined
-in Hiera to create compose files and systemd services.;T; [o;!
-;"I"summary;F;#I"JInstall podman and podman-compose, manage compose projects from Hiera;T;0;$0;@ao;!
+;T;'0;[[@v0[@y0[@|0[@0[@Ç0[@Ö0[@à0[@ã0[@é0[@ë0[@î0[@ó0[@ö0[@ù0[@†0[@£0[@¶0[@©0;IC;[ ;(@o;)IC;[ ;(@o;*IC;[ ;(@o;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@qiW;3T;:podman_compose;5;6;7;8; [ ;9{ ;IC;"~Installs podman and podman-compose, then iterates over projects defined
+in Hiera to create compose files and systemd services.;T; [o;!
+;"I"summary;F;#I"JInstall podman and podman-compose, manage compose projects from Hiera;T;0;$0;@oo;!
 ;"I"
-param;F;#I"7Whether to manage the podman package installation.;T;I"manage_package;T;$[@i;@ao;!
+param;F;#I"7Whether to manage the podman package installation.;T;I"manage_package;T;$[@w;@oo;!
 ;"I"
-param;F;#I"+Name of the podman package to install.;T;I"podman_package;T;$[@l;@ao;!
+param;F;#I"+Name of the podman package to install.;T;I"podman_package;T;$[@z;@oo;!
 ;"I"
-param;F;#I"AHow to install podman-compose: 'package' (apt/dnf) or 'pip'.;T;I"compose_install_method;T;$[@o;@ao;!
+param;F;#I"AHow to install podman-compose: 'package' (apt/dnf) or 'pip'.;T;I"compose_install_method;T;$[@};@oo;!
 ;"I"
-param;F;#I"6Package name when using install method 'package'.;T;I"compose_package;T;$[@r;@ao;!
+param;F;#I"6Package name when using install method 'package'.;T;I"compose_package;T;$[@Ä;@oo;!
 ;"I"
-param;F;#I"6Pip package name when using install method 'pip'.;T;I"compose_pip_package;T;$[@u;@ao;!
+param;F;#I"6Pip package name when using install method 'pip'.;T;I"compose_pip_package;T;$[@É;@oo;!
 ;"I"
-param;F;#I"-Ensure state for podman-compose package.;T;I"compose_ensure;T;$[@x;@ao;!
+param;F;#I"-Ensure state for podman-compose package.;T;I"compose_ensure;T;$[@Ü;@oo;!
 ;"I"
-param;F;#I"0Absolute path to the podman-compose binary.;T;I"compose_binary;T;$[@{;@ao;!
+param;F;#I"0Absolute path to the podman-compose binary.;T;I"compose_binary;T;$[@â;@oo;!
 ;"I"
 param;F;#I"ﬂWhether to install the systemd-container package (provides machinectl).
 Useful for opening proper user systemd sessions via
 `machinectl shell <user>@` with correctly initialized
-XDG_RUNTIME_DIR and DBUS_SESSION_BUS_ADDRESS.;T;I"manage_systemd_container;T;$[@~;@ao;!
+XDG_RUNTIME_DIR and DBUS_SESSION_BUS_ADDRESS.;T;I"manage_systemd_container;T;$[@å;@oo;!
 ;"I"
-param;F;#I"+Name of the systemd-container package.;T;I"systemd_container_package;T;$[@Å;@ao;!
+param;F;#I"+Name of the systemd-container package.;T;I"systemd_container_package;T;$[@è;@oo;!
 ;"I"
 param;F;#I"õName of the parent directory under each user's home that holds rootless
-compose projects. Default: 'compose' (resulting in /home/<user>/compose/<project>).;T;I"user_compose_dir_name;T;$[@Ñ;@ao;!
+compose projects. Default: 'compose' (resulting in /home/<user>/compose/<project>).;T;I"user_compose_dir_name;T;$[@í;@oo;!
 ;"I"
-param;F;#I"QAbsolute base directory for rootful compose projects. Default: /opt/compose.;T;I"root_compose_dir;T;$[@á;@ao;!
+param;F;#I"QAbsolute base directory for rootful compose projects. Default: /opt/compose.;T;I"root_compose_dir;T;$[@ï;@oo;!
 ;"I"
-param;F;#I"LHash of podman_compose::project resources, typically from Hiera lookup.;T;I"projects;T;$[@ä;@ao;!
+param;F;#I"LHash of podman_compose::project resources, typically from Hiera lookup.;T;I"projects;T;$[@ò;@oo;!
 ;"I"
-param;F;#I"HHash of podman_compose::cron resources for scheduled/periodic jobs.;T;I"cron_projects;T;$[@ç;@ao;!
+param;F;#I"HHash of podman_compose::cron resources for scheduled/periodic jobs.;T;I"cron_projects;T;$[@õ;@oo;!
 ;"I"
 param;F;#I"sHash of podman_compose::autoscale resources for CPU-based scaling of
-individual services of existing projects.;T;I"autoscalers;T;$[@ê;@ao;!
-;"I"example;F;#I"include podman_compose;T;I"Basic usage via Hiera;T;$0;@ao;!
+individual services of existing projects.;T;I"autoscalers;T;$[@û;@oo;!
+;"I"
+param;F;#I")Keep running containers' DNS servers in sync with the host when the host
+resolv.conf changes, without restarting the containers (see
+podman_compose::dns_sync). Can be disabled per project via the project's
+`dns_sync` parameter. Cron projects are not affected: they start fresh on
+every run anyway.;T;I"dns_sync;T;$[@°;@oo;!
+;"I"
+param;F;#I"GFiles watched (inotify via a systemd path unit) to trigger a sync.;T;I"dns_sync_watch_paths;T;$[@§;@oo;!
+;"I"
+param;F;#I"FFallback interval (systemd time span) of the periodic sync timer.;T;I"dns_sync_interval;T;$[@ß;@oo;!
+;"I"
+param;F;#I"Ïaardvark-dns older than 1.12 only reads its upstream servers on start.
+When true, such a process is restarted on a DNS change (brief DNS blip for
+container name resolution; containers keep running). When false, only a
+warning is logged.;T;I"dns_sync_restart_aardvark;T;$[@™;@oo;!
+;"I"example;F;#I"include podman_compose;T;I"Basic usage via Hiera;T;$0;@oo;!
 ;"I"example;F;#I"∫podman_compose::projects:
   myapp:
     user: appuser
@@ -2674,8 +2760,8 @@ podman_compose::cron_projects:
       services:
         restic:
           image: "restic/restic:0.17"
-          command: ["backup", "/data"];T;I"Hiera data;T;$0;@ao;!
-;"I"api;F;#@[;0;$0;@a;%[ ;&@ÿ;'0;@a;F;:@e;;i ;<@_;=I"#puppet_classes::podman_compose;Fo;E;o;F;I"manifests/install.pp;T;I"0class podman_compose::install {
+          command: ["backup", "/data"];T;I"Hiera data;T;$0;@oo;!
+;"I"api;F;#@[;0;$0;@o;%[ ;&@;'0;@o;F;:@s;;i ;<@m;=I"#puppet_classes::podman_compose;Fo;E;o;F;I"manifests/install.pp;T;I"0class podman_compose::install {
   assert_private()
 
   if $podman_compose::manage_package {
@@ -2729,19 +2815,184 @@ podman_compose::cron_projects:
 ;"I"api;F;#I"private;T;0;$0;0;%[ ;&I">@summary Install podman and podman-compose
 
 @api private
-;T;'0;[ ;IC;[ ;(@K;)IC;[ ;(@K;*IC;[ ;(@K;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@Mi
+;T;'0;[ ;IC;[ ;(@ç;)IC;[ ;(@ç;*IC;[ ;(@ç;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@èi
 ;3T;:podman_compose::install;5;6;7;8; [ ;9{ ;IC;" ;T; [o;!
-;"I"summary;F;#I"&Install podman and podman-compose;T;0;$0;@Ko;!
-;"I"api;F;#I"private;T;0;$0;@K;%[ ;&@[;'0;@K;F;:@O;;i ;<@_;=I",puppet_classes::podman_compose::install;F;(@_;)IC;[ ;(@_;*IC;[ ;(@_;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[ ;3F;:puppet_classes;5;6;7;C; [ ;9{ ;IC;" ;T; [ ;%[ ;&@^;'0;@_;;i ;<@o:7OpenvoxStrings::Yard::CodeObjects::DataTypeAliases;IC;[	o:5OpenvoxStrings::Yard::CodeObjects::DataTypeAlias;o:BOpenvoxStrings::Yard::Parsers::Puppet::DataTypeAliasStatement;I"types/ensure.pp;T;I"APodman_compose::Ensure = Enum['running', 'stopped', 'absent';T;i;o;;F;i ;i:@alias_ofI")Enum['running', 'stopped', 'absent'];T;I"Podman_compose::Ensure;T;IC;" ;T;0;0;F; [o;!
-;"I"summary;F;#I".Ensure state for a podman-compose project;T;0;$0;0;%[ ;&I"7@summary Ensure state for a podman-compose project;T;'0;N@á;IC;[ ;(@Ç;)IC;[ ;(@Ç;*IC;[ ;(@Ç;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@Ñi;3T;:Podman_compose::Ensure;5;6;7;8; [ ;9{ ;IC;" ;T; [o;!
-;"I"summary;F;#I".Ensure state for a podman-compose project;T;0;$0;@Ço;!
-;"I"api;F;#@[;0;$0;@Ç;%[ ;&@è;'0;@Ç;F;:@Ü;;i ;<@Ä;=I"5puppet_data_type_aliases::Podman_compose::Ensure;Fo;L;o;M;I"types/registries.pp;T;I"ﬁPodman_compose::Registries = Hash[
+;"I"summary;F;#I"&Install podman and podman-compose;T;0;$0;@ço;!
+;"I"api;F;#I"private;T;0;$0;@ç;%[ ;&@ù;'0;@ç;F;:@ë;;i ;<@m;=I",puppet_classes::podman_compose::install;Fo;E;o;F;I"manifests/dns_sync.pp;T;I"^class podman_compose::dns_sync {
+  assert_private()
+
+  $_ensure      = $podman_compose::dns_sync
+  $_conf_dir    = '/etc/podman-compose/dns-sync.d'
+  $_script_path = '/usr/local/libexec/podman-dns-sync.py'
+  $_state_file  = '/var/lib/podman-dns-sync/state.json'
+  $_unit_dir    = '/etc/systemd/system'
+
+  $_file_ensure = $_ensure ? { true => 'file', default => 'absent' }
+
+  # Marker files are written by podman_compose::project; purge removes those
+  # of projects that were dropped from Hiera.
+  ensure_resource('file', ['/etc/podman-compose', '/usr/local/libexec'], {
+    ensure => directory,
+  })
+
+  file { $_conf_dir:
+    ensure  => directory,
+    owner   => 'root',
+    group   => 'root',
+    mode    => '0755',
+    recurse => true,
+    purge   => true,
+  }
+
+  file { $_script_path:
+    ensure  => $_file_ensure,
+    owner   => 'root',
+    group   => 'root',
+    mode    => '0755',
+    content => epp('podman_compose/dns_sync.py.epp', {
+      'conf_dir'         => $_conf_dir,
+      'state_file'       => $_state_file,
+      'restart_aardvark' => $podman_compose::dns_sync_restart_aardvark,
+    }),
+  }
+
+  file { "${_unit_dir}/podman-dns-sync.service":
+    ensure  => $_file_ensure,
+    owner   => 'root',
+    group   => 'root',
+    mode    => '0644',
+    content => epp('podman_compose/systemd_dns_sync_unit.epp', {
+      'script_path' => $_script_path,
+    }),
+    notify  => Exec['podman-dns-sync-daemon-reload'],
+  }
+
+  file { "${_unit_dir}/podman-dns-sync.path":
+    ensure  => $_file_ensure,
+    owner   => 'root',
+    group   => 'root',
+    mode    => '0644',
+    content => epp('podman_compose/systemd_dns_sync_path.epp', {
+      'watch_paths' => $podman_compose::dns_sync_watch_paths,
+    }),
+    notify  => Exec['podman-dns-sync-daemon-reload'],
+  }
+
+  file { "${_unit_dir}/podman-dns-sync.timer":
+    ensure  => $_file_ensure,
+    owner   => 'root',
+    group   => 'root',
+    mode    => '0644',
+    content => epp('podman_compose/systemd_dns_sync_timer.epp', {
+      'interval' => $podman_compose::dns_sync_interval,
+    }),
+    notify  => Exec['podman-dns-sync-daemon-reload'],
+  }
+
+  exec { 'podman-dns-sync-daemon-reload':
+    command     => '/usr/bin/systemctl daemon-reload',
+    refreshonly => true,
+  }
+
+  if $_ensure {
+    service { ['podman-dns-sync.path', 'podman-dns-sync.timer']:
+      ensure    => running,
+      enable    => true,
+      require   => [
+        File[$_script_path],
+        File["${_unit_dir}/podman-dns-sync.service"],
+        Exec['podman-dns-sync-daemon-reload'],
+      ],
+      subscribe => [
+        File["${_unit_dir}/podman-dns-sync.path"],
+        File["${_unit_dir}/podman-dns-sync.timer"],
+      ],
+    }
+  } else {
+    # Stop before the unit files disappear, so systemd still knows them.
+    service { ['podman-dns-sync.path', 'podman-dns-sync.timer']:
+      ensure => stopped,
+      enable => false,
+      before => [
+        File["${_unit_dir}/podman-dns-sync.path"],
+        File["${_unit_dir}/podman-dns-sync.timer"],
+        File["${_unit_dir}/podman-dns-sync.service"],
+      ],
+    }
+
+    file { dirname($_state_file):
+      ensure  => absent,
+      recurse => true,
+      force   => true,
+    }
+  }
+};T;i;o;;F;i ;i;[ ;I"podman_compose::dns_sync;F;G0;IC;"In environments where DNS servers change (re-deployed resolvers with new
+IPs), long-running containers keep the nameservers they saw at creation
+time and eventually lose DNS. This class installs a small oneshot service
+that is triggered by a systemd path unit whenever the host resolv.conf
+changes (plus a timer as fallback) and updates every running container of
+the projects that opted in - without restarting them:
+
+* Containers with a copy of the host resolv.conf get that copy rewritten
+  in place (the bind mount makes the change visible immediately).
+* Containers on DNS-enabled networks (aardvark-dns) are served via the
+  network gateway; aardvark-dns is told to reload its upstream servers
+  (SIGHUP on >= 1.12, process restart on older releases; >= 1.17 also
+  watches resolv.conf itself). For rootless users the resolv.conf copy
+  inside the rootless network namespace is refreshed first.
+
+Nameservers not inherited from the host (explicit `dns:` in compose,
+network gateways, pasta/slirp4netns forwarders) are never changed.;T;0;0;F; [o;!
+;"I"summary;F;#I"HPush host nameserver changes into running podman-compose containers;T;0;$0;0o;!
+;"I"api;F;#I"private;T;0;$0;0;%[ ;&I"j@summary Push host nameserver changes into running podman-compose containers
+
+In environments where DNS servers change (re-deployed resolvers with new
+IPs), long-running containers keep the nameservers they saw at creation
+time and eventually lose DNS. This class installs a small oneshot service
+that is triggered by a systemd path unit whenever the host resolv.conf
+changes (plus a timer as fallback) and updates every running container of
+the projects that opted in - without restarting them:
+
+* Containers with a copy of the host resolv.conf get that copy rewritten
+  in place (the bind mount makes the change visible immediately).
+* Containers on DNS-enabled networks (aardvark-dns) are served via the
+  network gateway; aardvark-dns is told to reload its upstream servers
+  (SIGHUP on >= 1.12, process restart on older releases; >= 1.17 also
+  watches resolv.conf itself). For rootless users the resolv.conf copy
+  inside the rootless network namespace is refreshed first.
+
+Nameservers not inherited from the host (explicit `dns:` in compose,
+network gateways, pasta/slirp4netns forwarders) are never changed.
+
+@api private
+;T;'0;[ ;IC;[ ;(@µ;)IC;[ ;(@µ;*IC;[ ;(@µ;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@∑i;3T;:podman_compose::dns_sync;5;6;7;8; [ ;9{ ;IC;"In environments where DNS servers change (re-deployed resolvers with new
+IPs), long-running containers keep the nameservers they saw at creation
+time and eventually lose DNS. This class installs a small oneshot service
+that is triggered by a systemd path unit whenever the host resolv.conf
+changes (plus a timer as fallback) and updates every running container of
+the projects that opted in - without restarting them:
+
+* Containers with a copy of the host resolv.conf get that copy rewritten
+  in place (the bind mount makes the change visible immediately).
+* Containers on DNS-enabled networks (aardvark-dns) are served via the
+  network gateway; aardvark-dns is told to reload its upstream servers
+  (SIGHUP on >= 1.12, process restart on older releases; >= 1.17 also
+  watches resolv.conf itself). For rootless users the resolv.conf copy
+  inside the rootless network namespace is refreshed first.
+
+Nameservers not inherited from the host (explicit `dns:` in compose,
+network gateways, pasta/slirp4netns forwarders) are never changed.;T; [o;!
+;"I"summary;F;#I"HPush host nameserver changes into running podman-compose containers;T;0;$0;@µo;!
+;"I"api;F;#I"private;T;0;$0;@µ;%[ ;&@≈;'0;@µ;F;:@π;;i ;<@m;=I"-puppet_classes::podman_compose::dns_sync;F;(@m;)IC;[ ;(@m;*IC;[ ;(@m;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[ ;3F;:puppet_classes;5;6;7;C; [ ;9{ ;IC;" ;T; [ ;%[ ;&@l;'0;@m;;i ;<@o:7OpenvoxStrings::Yard::CodeObjects::DataTypeAliases;IC;[	o:5OpenvoxStrings::Yard::CodeObjects::DataTypeAlias;o:BOpenvoxStrings::Yard::Parsers::Puppet::DataTypeAliasStatement;I"types/ensure.pp;T;I"APodman_compose::Ensure = Enum['running', 'stopped', 'absent';T;i;o;;F;i ;i:@alias_ofI")Enum['running', 'stopped', 'absent'];T;I"Podman_compose::Ensure;T;IC;" ;T;0;0;F; [o;!
+;"I"summary;F;#I".Ensure state for a podman-compose project;T;0;$0;0;%[ ;&I"7@summary Ensure state for a podman-compose project;T;'0;O@Ò;IC;[ ;(@Ï;)IC;[ ;(@Ï;*IC;[ ;(@Ï;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@Ói;3T;:Podman_compose::Ensure;5;6;7;8; [ ;9{ ;IC;" ;T; [o;!
+;"I"summary;F;#I".Ensure state for a podman-compose project;T;0;$0;@Ïo;!
+;"I"api;F;#@[;0;$0;@Ï;%[ ;&@˘;'0;@Ï;F;:@;;i ;<@Í;=I"5puppet_data_type_aliases::Podman_compose::Ensure;Fo;M;o;N;I"types/registries.pp;T;I"ﬁPodman_compose::Registries = Hash[
   String[1],
   Struct[{
     username           => String[1],
     password           => Variant[Sensitive[String[1]], String[1]],
     Optional[proxy]    => Hash[String[1], String[1]],
-  }];T;i;o;;F;i ;i;NI"ΩHash[String[1], Struct[{
+  }];T;i;o;;F;i ;i;OI"ΩHash[String[1], Struct[{
     username           => String[1],
     password           => Variant[Sensitive[String[1]], String[1]],
     Optional[proxy]    => Hash[String[1], String[1]],
@@ -2776,7 +3027,7 @@ value to `Sensitive` before handing it to `podman_compose::registry`.
 
 The optional `proxy` hash is passed through to `podman_compose::registry`'s
 `proxy_env` so the login can reach a registry that is only accessible through
-a forward proxy.;T;'0;N@™;IC;[ ;(@•;)IC;[ ;(@•;*IC;[ ;(@•;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@ßi;3T;:Podman_compose::Registries;5;6;7;8; [ ;9{ ;IC;"The password may be supplied either as a `Sensitive[String]` (preferred) or
+a forward proxy.;T;'0;O@;IC;[ ;(@;)IC;[ ;(@;*IC;[ ;(@;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@i;3T;:Podman_compose::Registries;5;6;7;8; [ ;9{ ;IC;"The password may be supplied either as a `Sensitive[String]` (preferred) or
 as a plain `String`. The latter is accepted because hiera-eyaml decrypts
 `ENC[...]` blocks into ordinary strings unless a `lookup_options`
 `convert_to: 'Sensitive'` is configured. project.pp / cron.pp normalize the
@@ -2785,16 +3036,16 @@ value to `Sensitive` before handing it to `podman_compose::registry`.
 The optional `proxy` hash is passed through to `podman_compose::registry`'s
 `proxy_env` so the login can reach a registry that is only accessible through
 a forward proxy.;T; [o;!
-;"I"summary;F;#I"(Registry credentials hash structure;T;0;$0;@•o;!
+;"I"summary;F;#I"(Registry credentials hash structure;T;0;$0;@o;!
 ;"I"example;F;#I" {
   'registry.example.com' => { 'username' => 'deploy', 'password' => Sensitive('secret') },
   'ghcr.io'              => { 'username' => 'bot',    'password' => 'token',
                               'proxy' => { 'HTTPS_PROXY' => 'http://proxy:3128' } },
-};T;I" ;T;$0;@•o;!
-;"I"api;F;#@[;0;$0;@•;%[ ;&@∂;'0;@•;F;:@©;;i ;<@Ä;=I"9puppet_data_type_aliases::Podman_compose::Registries;Fo;L;o;M;I"types/install_method.pp;T;I";Podman_compose::Install_method = Enum['package', 'pip';T;i;o;;F;i ;i;NI"Enum['package', 'pip'];T;I"#Podman_compose::Install_method;T;IC;" ;T;0;0;F; [o;!
-;"I"summary;F;#I"&Install method for podman-compose;T;0;$0;0;%[ ;&I"/@summary Install method for podman-compose;T;'0;N@’;IC;[ ;(@–;)IC;[ ;(@–;*IC;[ ;(@–;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@“i;3T;:#Podman_compose::Install_method;5;6;7;8; [ ;9{ ;IC;" ;T; [o;!
-;"I"summary;F;#I"&Install method for podman-compose;T;0;$0;@–o;!
-;"I"api;F;#@[;0;$0;@–;%[ ;&@›;'0;@–;F;:@‘;;i ;<@Ä;=I"=puppet_data_type_aliases::Podman_compose::Install_method;Fo;L;o;M;I"types/recreate_strategy.pp;T;I"TPodman_compose::Recreate_strategy = Enum['rolling', 'force-recreate', 'down-up';T;i;o;;F;i ;i;NI"1Enum['rolling', 'force-recreate', 'down-up'];T;I"&Podman_compose::Recreate_strategy;T;IC;"`* `rolling`        - `up -d --remove-orphans`. Least disruptive; relies on
+};T;I" ;T;$0;@o;!
+;"I"api;F;#@[;0;$0;@;%[ ;&@ ;'0;@;F;:@;;i ;<@Í;=I"9puppet_data_type_aliases::Podman_compose::Registries;Fo;M;o;N;I"types/install_method.pp;T;I";Podman_compose::Install_method = Enum['package', 'pip';T;i;o;;F;i ;i;OI"Enum['package', 'pip'];T;I"#Podman_compose::Install_method;T;IC;" ;T;0;0;F; [o;!
+;"I"summary;F;#I"&Install method for podman-compose;T;0;$0;0;%[ ;&I"/@summary Install method for podman-compose;T;'0;O@?;IC;[ ;(@:;)IC;[ ;(@:;*IC;[ ;(@:;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@<i;3T;:#Podman_compose::Install_method;5;6;7;8; [ ;9{ ;IC;" ;T; [o;!
+;"I"summary;F;#I"&Install method for podman-compose;T;0;$0;@:o;!
+;"I"api;F;#@[;0;$0;@:;%[ ;&@G;'0;@:;F;:@>;;i ;<@Í;=I"=puppet_data_type_aliases::Podman_compose::Install_method;Fo;M;o;N;I"types/recreate_strategy.pp;T;I"TPodman_compose::Recreate_strategy = Enum['rolling', 'force-recreate', 'down-up';T;i;o;;F;i ;i;OI"1Enum['rolling', 'force-recreate', 'down-up'];T;I"&Podman_compose::Recreate_strategy;T;IC;"`* `rolling`        - `up -d --remove-orphans`. Least disruptive; relies on
                      podman-compose's own change detection. May NOT pick up
                      `.env` content changes delivered via `env_file:` and
                      will NOT re-create existing networks.
@@ -2821,7 +3072,7 @@ or .env changes.;T;0;$0;0;%[ ;&I"æ@summary How a project's containers are 
 * `down-up`        - `down` then `up -d --remove-orphans`. Tears the project
                      down (including its networks) and brings it back up, so
                      network topology changes are applied too. Causes a brief
-                     downtime of the whole project.;T;'0;N@¯;IC;[ ;(@Û;)IC;[ ;(@Û;*IC;[ ;(@Û;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@ıi;3T;:&Podman_compose::Recreate_strategy;5;6;7;8; [ ;9{ ;IC;"`* `rolling`        - `up -d --remove-orphans`. Least disruptive; relies on
+                     downtime of the whole project.;T;'0;O@b;IC;[ ;(@];)IC;[ ;(@];*IC;[ ;(@];+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@_i;3T;:&Podman_compose::Recreate_strategy;5;6;7;8; [ ;9{ ;IC;"`* `rolling`        - `up -d --remove-orphans`. Least disruptive; relies on
                      podman-compose's own change detection. May NOT pick up
                      `.env` content changes delivered via `env_file:` and
                      will NOT re-create existing networks.
@@ -2834,6 +3085,6 @@ or .env changes.;T;0;$0;0;%[ ;&I"æ@summary How a project's containers are 
                      network topology changes are applied too. Causes a brief
                      downtime of the whole project.;T; [o;!
 ;"I"summary;F;#I"VHow a project's containers are (re)created when the compose file
-or .env changes.;T;0;$0;@Ûo;!
-;"I"api;F;#@[;0;$0;@Û;%[ ;&@ ;'0;@Û;F;:@˜;;i ;<@Ä;=I"@puppet_data_type_aliases::Podman_compose::Recreate_strategy;F;(@Ä;)IC;[ ;(@Ä;*IC;[ ;(@Ä;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[ ;3F;:puppet_data_type_aliases;5;6;7;C; [ ;9{ ;IC;" ;T; [ ;%[ ;&@^;'0;@Ä;;i ;<@;(@;)IC;[ ;(@;*IC;[ ;(@;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[ ;3F;; ;5;6;7;8; [ ;9{ ;IC;" ;T; [ ;%[ ;&@^;'0;@;<0;=@^;B@:/puppet_defined_types::podman_compose::cron@
-;J@_:#puppet_classes::podman_compose@a:/puppet_defined_types::podman_compose::user@^:,puppet_classes::podman_compose::install@K:2puppet_defined_types::podman_compose::project@:3puppet_defined_types::podman_compose::registry@ó:4puppet_defined_types::podman_compose::autoscale@*;S@Ä:5puppet_data_type_aliases::Podman_compose::Ensure@Ç:9puppet_data_type_aliases::Podman_compose::Registries@•:=puppet_data_type_aliases::Podman_compose::Install_method@–:@puppet_data_type_aliases::Podman_compose::Recreate_strategy@Û
+or .env changes.;T;0;$0;@]o;!
+;"I"api;F;#@[;0;$0;@];%[ ;&@j;'0;@];F;:@a;;i ;<@Í;=I"@puppet_data_type_aliases::Podman_compose::Recreate_strategy;F;(@Í;)IC;[ ;(@Í;*IC;[ ;(@Í;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[ ;3F;:puppet_data_type_aliases;5;6;7;C; [ ;9{ ;IC;" ;T; [ ;%[ ;&@l;'0;@Í;;i ;<@;(@;)IC;[ ;(@;*IC;[ ;(@;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[ ;3F;; ;5;6;7;8; [ ;9{ ;IC;" ;T; [ ;%[ ;&@l;'0;@;<0;=@l;B@:/puppet_defined_types::podman_compose::cron@
+;K@m:#puppet_classes::podman_compose@o:/puppet_defined_types::podman_compose::user@^:,puppet_classes::podman_compose::install@ç:2puppet_defined_types::podman_compose::project@:-puppet_classes::podman_compose::dns_sync@µ:3puppet_defined_types::podman_compose::registry@•:4puppet_defined_types::podman_compose::autoscale@8;T@Í:5puppet_data_type_aliases::Podman_compose::Ensure@Ï:9puppet_data_type_aliases::Podman_compose::Registries@:=puppet_data_type_aliases::Podman_compose::Install_method@::@puppet_data_type_aliases::Podman_compose::Recreate_strategy@]

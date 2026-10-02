@@ -11,6 +11,7 @@ Puppet module to install podman-compose, build compose files from Hiera data, an
 - **Image-digest drift detection**: On every Puppet run, each service's running container image digest is compared against the desired image. Drift (registry update behind a stable tag, manual change, missing container, …) triggers a per-service `up -d`
 - **Image pull on start**: Optionally pull images before every (re)start
 - **Secrets support**: Sensitive `.env` values via `Sensitive[String]` (eyaml-friendly)
+- **DNS sync without restarts**: When the host's nameservers change, running containers get the new servers pushed in — no container restart (enabled by default)
 - **Clean teardown**: `ensure => absent` runs `podman-compose down` and removes all artifacts
 
 ## Requirements
@@ -232,6 +233,10 @@ Setting `ensure: absent` will:
 | `projects` | `Hash` | `{}` | Hash of project definitions |
 | `cron_projects` | `Hash` | `{}` | Hash of scheduled (timer) job definitions |
 | `autoscalers` | `Hash` | `{}` | Hash of `podman_compose::autoscale` definitions |
+| `dns_sync` | `Boolean` | `true` | Push host nameserver changes into running containers (see [DNS sync](#dns-sync)) |
+| `dns_sync_watch_paths` | `Array[Stdlib::Absolutepath]` | `['/etc/resolv.conf', '/run/systemd/resolve/resolv.conf']` | Files watched to trigger a sync |
+| `dns_sync_interval` | `String` | `'5min'` | Fallback timer interval |
+| `dns_sync_restart_aardvark` | `Boolean` | `true` | Restart aardvark-dns < 1.12 (cannot reload upstreams otherwise) |
 
 ### Defined type: `podman_compose::project`
 
@@ -256,6 +261,7 @@ Setting `ensure: absent` will:
 | `search_registries` | `Array[String]` | `['docker.io']` | Registries for resolving unqualified image names; shared per user |
 | `verify_running_image` | `Boolean` | `true` | On each Puppet run, compare running image digest vs desired and roll affected services if drifted |
 | `recreate_strategy` | `Enum['rolling','force-recreate','down-up']` | `'force-recreate'` | How containers are re-created on compose/`.env` change (see below) |
+| `dns_sync` | `Boolean` | `true` | Include this project in the DNS sync (only while the class-level `dns_sync` is on) |
 
 ### Scaling services
 
@@ -344,6 +350,45 @@ Set `manage_search_registries: false` to manage that file yourself, or override
 user via `ensure_resource`, so all projects of the same user must agree on the
 value. This is independent of the `registries` parameter, which only performs
 `podman login`.
+
+## DNS sync
+
+Containers keep the nameservers they saw when they were created. In
+environments where resolvers are re-deployed with new IPs, long-running
+containers eventually lose DNS once all their known servers are gone.
+
+With `dns_sync: true` (default) the module installs `podman-dns-sync.path`
+(inotify on `dns_sync_watch_paths`) and `podman-dns-sync.timer` (fallback),
+both starting the oneshot `podman-dns-sync.service`. It updates every running
+container of the opted-in projects — rootful and rootless — **without
+restarting them**, covering both ways Podman hands DNS to a container:
+
+| Container DNS setup | What the sync does |
+|---|---|
+| Copy of the host `resolv.conf` (default `podman` network, `network_mode: host`, slirp4netns/pasta, CNI without dnsname) | Rewrites the copy at `ResolvConfPath` **in place** — it is bind-mounted, so the container sees it immediately |
+| DNS-enabled network (compose's `<project>_default` with netavark/aardvark-dns) | Rootless: refreshes the `resolv.conf` copy inside the rootless network namespace. Then aardvark-dns reloads its upstreams: **>= 1.17** watches the file itself, **>= 1.12** gets `SIGHUP`, **< 1.12** is restarted (brief name-resolution blip, containers keep running; disable with `dns_sync_restart_aardvark: false`) |
+| CNI + dnsname (podman 3.x) | Nothing needed — its dnsmasq polls `resolv.conf` itself |
+
+Only nameservers inherited from the host are replaced; `search`/`options`
+lines, an explicit `dns:` in the compose file, network gateways and the
+pasta/slirp4netns forwarders stay untouched. If the host has no usable
+(non-loopback) nameserver, containers are left alone. When the host only
+lists a loopback stub (systemd-resolved `127.0.0.53`), the real upstreams are
+taken from `/run/systemd/resolve/resolv.conf` — the same rule Podman applies.
+
+Cron projects are not included: they start with a fresh `resolv.conf` on
+every run. Check what happened with `journalctl -u podman-dns-sync.service`.
+
+```yaml
+# opt a single project out
+podman_compose::projects:
+  legacy:
+    dns_sync: false
+    ...
+
+# or turn the feature off globally
+podman_compose::dns_sync: false
+```
 
 ## How it works
 

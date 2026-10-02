@@ -1,0 +1,15 @@
+<%- |
+  Stdlib::Absolutepath $script_path,
+| -%>
+# Managed by Puppet - DO NOT EDIT
+# Pushes host nameserver changes into running podman-compose containers.
+
+[Unit]
+Description=Sync host DNS servers into running podman-compose containers
+After=network-online.target
+
+[Service]
+Type=oneshot
+# Debounce: DHCP clients / resolvconf often rewrite the file several times.
+ExecStartPre=/bin/sleep 2
+ExecStart=/usr/bin/python3 <%= $script_path %>
