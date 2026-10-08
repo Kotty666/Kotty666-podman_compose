@@ -80,6 +80,21 @@ while IFS=$'\t' read -r svc image; do
       --filter "label=io.podman.compose.service=${svc}" \
       --format '{{.ID}}' 2>/dev/null | head -n1 || true)
   fi
+  # One-shot services (migrations, seeders, init jobs) exit after doing their
+  # work, so they never show up in a plain `podman ps`. Treat a container that
+  # exited cleanly (code 0) as present and still compare its image; a crashed
+  # (non-zero) or missing container remains drift.
+  if [ -z "$cid" ]; then
+    for label in com.docker.compose io.podman.compose; do
+      cid=$(podman ps -a \
+        --filter "label=${label}.project=${PROJECT}" \
+        --filter "label=${label}.service=${svc}" \
+        --filter "status=exited" \
+        --format '{{.ID}} {{.ExitCode}}' 2>/dev/null \
+        | awk '$2 == 0 { print $1; exit }' || true)
+      [ -n "$cid" ] && break
+    done
+  fi
   if [ -z "$cid" ]; then
     drift=1
     continue
