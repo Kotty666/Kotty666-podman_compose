@@ -171,6 +171,24 @@ define podman_compose::cron (
   # which a non-root user can't enter → "cannot chdir to /root: Permission denied").
   $_safe_cwd = '/tmp'
 
+  # Registers the user's image store with podman-image-prune and protects
+  # the images referenced here - between runs no container keeps them in use.
+  $_image_prune_marker = "/etc/podman-compose/image-prune.d/cron-${name}.conf"
+  if $podman_compose::image_prune and $ensure != 'absent' {
+    $_prune_images = $compose['services'].map |$_svc, $_cfg| { $_cfg['image'] }.filter |$_img| { $_img =~ String[1] }
+    file { $_image_prune_marker:
+      ensure  => file,
+      owner   => 'root',
+      group   => 'root',
+      mode    => '0644',
+      content => ([$_user] + unique($_prune_images)).map |$_line| { "${_line}\n" }.join(''),
+    }
+  } else {
+    file { $_image_prune_marker:
+      ensure => absent,
+    }
+  }
+
   # ==========================================================
   # ensure => absent
   # ==========================================================

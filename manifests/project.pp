@@ -261,6 +261,24 @@ define podman_compose::project (
     }
   }
 
+  # Registers the user's image store with podman-image-prune and protects
+  # the images referenced here: <user>, then one image per line.
+  $_image_prune_marker = "/etc/podman-compose/image-prune.d/project-${name}.conf"
+  if $podman_compose::image_prune and $ensure != 'absent' {
+    $_prune_images = $compose['services'].map |$_svc, $_cfg| { $_cfg['image'] }.filter |$_img| { $_img =~ String[1] }
+    file { $_image_prune_marker:
+      ensure  => file,
+      owner   => 'root',
+      group   => 'root',
+      mode    => '0644',
+      content => ([$_user] + unique($_prune_images)).map |$_line| { "${_line}\n" }.join(''),
+    }
+  } else {
+    file { $_image_prune_marker:
+      ensure => absent,
+    }
+  }
+
   if $ensure == 'absent' {
     # A project created before compose.yml became the default may still carry
     # the legacy 'docker-compose.yml' on disk. Resolve whichever compose file

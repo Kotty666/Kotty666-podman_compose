@@ -501,6 +501,53 @@ describe 'podman_compose::project' do
           it { is_expected.to contain_file(marker).with_ensure('absent') }
         end
       end
+
+      context 'image_prune marker' do
+        let(:marker) { '/etc/podman-compose/image-prune.d/project-demo.conf' }
+
+        context 'globally disabled (default)' do
+          let(:params) { rootful_compose_params }
+
+          it { is_expected.to contain_file(marker).with_ensure('absent') }
+        end
+
+        context 'enabled' do
+          let(:pre_condition) { 'class { "podman_compose": image_prune => true }' }
+
+          context 'rootless with built and duplicate images' do
+            let(:params) do
+              {
+                'rootless'     => true,
+                'user'         => 'app',
+                'subuid_start' => 100_000,
+                'subgid_start' => 100_000,
+                'compose'      => {
+                  'services' => {
+                    'web'    => { 'image' => 'nginx:1.27' },
+                    'worker' => { 'image' => 'nginx:1.27' },
+                    'local'  => { 'build' => '.' },
+                    'db'     => { 'image' => 'docker.io/library/mariadb:11' },
+                  },
+                },
+              }
+            end
+
+            it { is_expected.to compile.with_all_deps }
+
+            it do
+              is_expected.to contain_file(marker)
+                .with_ensure('file')
+                .with_content("app\nnginx:1.27\ndocker.io/library/mariadb:11\n")
+            end
+          end
+
+          context 'ensure => absent' do
+            let(:params) { rootful_compose_params.merge('ensure' => 'absent') }
+
+            it { is_expected.to contain_file(marker).with_ensure('absent') }
+          end
+        end
+      end
     end
   end
 end

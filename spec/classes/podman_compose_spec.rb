@@ -122,6 +122,65 @@ describe 'podman_compose' do
         it { is_expected.to contain_service('podman-dns-sync.path').with_ensure('stopped').with_enable(false) }
         it { is_expected.to contain_service('podman-dns-sync.timer').with_ensure('stopped').with_enable(false) }
       end
+
+      context 'image_prune (default disabled)' do
+        it { is_expected.to contain_class('podman_compose::image_prune') }
+        it { is_expected.to contain_file('/etc/podman-compose/image-prune.d').with_purge(true) }
+        it { is_expected.to contain_file('/usr/local/libexec/podman-image-prune.py').with_ensure('absent') }
+        it { is_expected.to contain_file('/etc/systemd/system/podman-image-prune.service').with_ensure('absent') }
+        it { is_expected.to contain_file('/etc/systemd/system/podman-image-prune.timer').with_ensure('absent') }
+        it { is_expected.to contain_service('podman-image-prune.timer').with_ensure('stopped').with_enable(false) }
+      end
+
+      context 'image_prune enabled, orphaned images only' do
+        let(:params) { { 'image_prune' => true } }
+
+        it { is_expected.to compile.with_all_deps }
+        it { is_expected.to contain_service('podman-image-prune.timer').with_ensure('running').with_enable(true) }
+
+        it do
+          is_expected.to contain_file('/usr/local/libexec/podman-image-prune.py')
+            .with_ensure('file')
+            .with_mode('0755')
+            .with_content(%r{^KEEP = None$})
+            .with_content(%r{^DRY_RUN = False$})
+        end
+
+        it do
+          is_expected.to contain_file('/etc/systemd/system/podman-image-prune.timer')
+            .with_content(%r{^OnCalendar=daily$})
+            .with_content(%r{^RandomizedDelaySec=1h$})
+        end
+
+        it do
+          is_expected.to contain_file('/etc/systemd/system/podman-image-prune.service')
+            .with_content(%r{^ExecStart=/usr/bin/python3 /usr/local/libexec/podman-image-prune.py$})
+        end
+      end
+
+      context 'image_prune enabled, keep newest versions' do
+        let(:params) do
+          {
+            'image_prune'                      => true,
+            'image_prune_keep'                 => 3,
+            'image_prune_on_calendar'          => 'Sun *-*-* 03:00:00',
+            'image_prune_randomized_delay_sec' => '0',
+            'image_prune_dry_run'              => true,
+          }
+        end
+
+        it { is_expected.to compile.with_all_deps }
+        it { is_expected.to contain_file('/usr/local/libexec/podman-image-prune.py').with_content(%r{^KEEP = 3$}) }
+        it { is_expected.to contain_file('/usr/local/libexec/podman-image-prune.py').with_content(%r{^DRY_RUN = True$}) }
+        it { is_expected.to contain_file('/etc/systemd/system/podman-image-prune.timer').with_content(%r{^OnCalendar=Sun \*-\*-\* 03:00:00$}) }
+        it { is_expected.to contain_file('/etc/systemd/system/podman-image-prune.timer').with_content(%r{^RandomizedDelaySec=0$}) }
+      end
+
+      context 'image_prune_keep must be positive' do
+        let(:params) { { 'image_prune' => true, 'image_prune_keep' => 0 } }
+
+        it { is_expected.to compile.and_raise_error(%r{image_prune_keep}) }
+      end
     end
   end
 end

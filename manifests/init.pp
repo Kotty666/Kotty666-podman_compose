@@ -51,6 +51,26 @@
 #   When true, such a process is restarted on a DNS change (brief DNS blip for
 #   container name resolution; containers keep running). When false, only a
 #   warning is logged.
+# @param image_prune
+#   Periodically remove old images from the image store of root and of every
+#   rootless user hosting a project or cron job (see
+#   podman_compose::image_prune). Images used by a container or referenced by
+#   a managed compose file are never removed.
+# @param image_prune_keep
+#   Unset (default): only orphaned images are removed (no tag left, not used
+#   by any container) - like `podman image prune`.
+#   N: per repository the N newest images (by creation time, tagged or
+#   untagged) are kept for a quick manual rollback; all older ones are
+#   removed. N includes the image currently in use, so 3 keeps the current
+#   and two previous versions.
+# @param image_prune_on_calendar
+#   Systemd OnCalendar expression for the cleanup timer.
+# @param image_prune_randomized_delay_sec
+#   Jitter for the cleanup timer (systemd time span), spreads the load
+#   across hosts. '0' disables it.
+# @param image_prune_dry_run
+#   Only log what would be removed (`journalctl -u podman-image-prune`).
+#   The script can also be run manually with `--dry-run`.
 #
 # @example Basic usage via Hiera
 #   include podman_compose
@@ -98,9 +118,15 @@ class podman_compose (
   Array[Stdlib::Absolutepath, 1]  $dns_sync_watch_paths,
   String[1]                       $dns_sync_interval,
   Boolean                         $dns_sync_restart_aardvark,
+  Boolean                         $image_prune,
+  Optional[Integer[1]]            $image_prune_keep,
+  String[1]                       $image_prune_on_calendar,
+  String[1]                       $image_prune_randomized_delay_sec,
+  Boolean                         $image_prune_dry_run,
 ) {
   contain podman_compose::install
   contain podman_compose::dns_sync
+  contain podman_compose::image_prune
 
   $projects.each |String $name, Hash $config| {
     podman_compose::project { $name:

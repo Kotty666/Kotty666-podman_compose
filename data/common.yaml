@@ -19,3 +19,8 @@ podman_compose::dns_sync_watch_paths:
   - '/run/systemd/resolve/resolv.conf'
 podman_compose::dns_sync_interval: '5min'
 podman_compose::dns_sync_restart_aardvark: true
+podman_compose::image_prune: false
+podman_compose::image_prune_keep: ~
+podman_compose::image_prune_on_calendar: 'daily'
+podman_compose::image_prune_randomized_delay_sec: '1h'
+podman_compose::image_prune_dry_run: false
