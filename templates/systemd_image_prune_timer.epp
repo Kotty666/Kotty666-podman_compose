@@ -1,0 +1,17 @@
+<%- |
+  String[1] $on_calendar,
+  String[1] $randomized_delay_sec,
+| -%>
+# Managed by Puppet - DO NOT EDIT
+
+[Unit]
+Description=Periodic podman image cleanup
+
+[Timer]
+OnCalendar=<%= $on_calendar %>
+Persistent=true
+RandomizedDelaySec=<%= $randomized_delay_sec %>
+Unit=podman-image-prune.service
+
+[Install]
+WantedBy=timers.target

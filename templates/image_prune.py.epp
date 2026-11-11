@@ -1,0 +1,205 @@
+<%- |
+  Stdlib::Absolutepath $conf_dir,
+  Optional[Integer[1]] $keep,
+  Boolean              $dry_run,
+| -%>
+#!/usr/bin/env python3
+# Managed by Puppet - DO NOT EDIT
+#
+# Removes old podman images of every image store (root and each rootless
+# user) that hosts a podman-compose project. Triggered by
+# podman-image-prune.timer.
+#
+# Modes:
+#  * KEEP = None  - only orphaned images: no tag left and not used by any
+#                   container (same as `podman image prune`).
+#  * KEEP = N     - per repository the N newest images (by creation time,
+#                   tagged or not) are kept as rollback candidates; every other
+#                   image is removed. A re-pulled `:latest` leaves the previous
+#                   image untagged but still carrying its repository digest, so
+#                   it counts as a version of that repository.
+#
+# Never removed: images used by any container (running or stopped) and
+# images referenced by a managed compose file (cron jobs have no container
+# between runs).
+#
+# Usage: podman-image-prune.py [--dry-run]
+import glob
+import json
+import os
+import pwd
+import subprocess
+import sys
+
+CONF_DIR = "<%= $conf_dir %>"
+KEEP = <%= $keep ? { undef => 'None', default => $keep } %>
+DRY_RUN = <%= $dry_run ? { true => 'True', default => 'False' } %>
+
+
+def log(msg):
+    print(msg, flush=True)
+
+
+def run(cmd, user=None):
+    """Run cmd as root or (via runuser) as a rootless user with the
+    environment podman needs to find its storage and runtime dir."""
+    if user is not None:
+        cmd = [
+            "runuser", "-u", user.pw_name, "--",
+            "env",
+            "HOME={}".format(user.pw_dir),
+            "XDG_RUNTIME_DIR=/run/user/{}".format(user.pw_uid),
+        ] + cmd
+    return subprocess.run(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        universal_newlines=True, cwd="/", check=False,
+    )
+
+
+def podman_json(cmd, user):
+    res = run(["podman"] + cmd + ["--format", "json"], user)
+    if res.returncode != 0:
+        raise RuntimeError("podman {} failed: {}".format(
+            " ".join(cmd), res.stderr.strip()))
+    return json.loads(res.stdout or "[]") or []
+
+
+# --- configuration ---------------------------------------------------------
+
+def load_scopes():
+    """Marker files written by podman_compose::project / ::cron:
+    first line the user owning the image store, then one image per line."""
+    scopes = {}
+    for path in sorted(glob.glob(os.path.join(CONF_DIR, "*.conf"))):
+        try:
+            with open(path) as f:
+                lines = [ln.strip() for ln in f.read().splitlines()]
+        except OSError:
+            continue
+        if not lines or not lines[0]:
+            continue
+        scopes.setdefault(lines[0], set()).update(ln for ln in lines[1:] if ln)
+    return scopes
+
+
+# --- image helpers ---------------------------------------------------------
+
+def strip_tag(ref):
+    """docker.io/library/nginx:1.27 -> docker.io/library/nginx
+    (a ':' before the last '/' belongs to a registry port)."""
+    ref = ref.split("@", 1)[0]
+    head, sep, tail = ref.rpartition(":")
+    if sep and "/" not in tail:
+        return head
+    return ref
+
+
+def image_names(img):
+    names = list(img.get("Names") or []) + list(img.get("RepoTags") or [])
+    return sorted({n for n in names if n and "<none>" not in n})
+
+
+def image_repos(img):
+    refs = image_names(img) + list(img.get("RepoDigests") or [])
+    return {strip_tag(r) for r in refs if r and "<none>" not in r}
+
+
+def resolve(ref, user):
+    """Image ID behind a compose image reference, using podman's own
+    short-name resolution. None if not present locally."""
+    res = run(["podman", "image", "inspect", "--format", "{{.Id}}", ref], user)
+    if res.returncode != 0:
+        return None
+    return res.stdout.strip() or None
+
+
+def human(size):
+    for unit in ("B", "KB", "MB", "GB"):
+        if size < 1024:
+            return "{:.1f} {}".format(size, unit)
+        size /= 1024.0
+    return "{:.1f} TB".format(size)
+
+
+# --- pruning ---------------------------------------------------------------
+
+def prune_scope(scope, user, protected_refs, dry_run):
+    images = {}
+    for img in podman_json(["images"], user):
+        images.setdefault(img["Id"], img)  # listed once per tag
+
+    in_use = {c.get("ImageID") for c in podman_json(["ps", "-a"], user)}
+    in_use |= {i for i, img in images.items() if img.get("Containers")}
+    protected = {resolve(r, user) for r in protected_refs} - {None}
+
+    keep = set(in_use) | protected
+    if KEEP is None:
+        keep |= {i for i, img in images.items() if image_names(img)}
+    else:
+        groups = {}
+        for i, img in images.items():
+            for repo in image_repos(img):
+                groups.setdefault(repo, []).append(img)
+        for members in groups.values():
+            members.sort(key=lambda m: m.get("Created") or 0, reverse=True)
+            keep |= {m["Id"] for m in members[:KEEP]}
+
+    removed, freed, failed = 0, 0, 0
+    for i, img in sorted(images.items(), key=lambda e: e[1].get("Created") or 0):
+        if i in keep:
+            continue
+        names = image_names(img)
+        label = ", ".join(names) or ", ".join(img.get("RepoDigests") or []) \
+            or "<none>"
+        # An image with several names must be removed by name: `podman rmi
+        # <id>` refuses without --force, and --force would also remove
+        # containers using it.
+        target = names or [i]
+        if dry_run:
+            log("[{}] would remove {} {} ({})".format(
+                scope, i[:12], label, human(img.get("Size") or 0)))
+            removed += 1
+            freed += img.get("Size") or 0
+            continue
+        res = run(["podman", "rmi"] + target, user)
+        if res.returncode == 0:
+            log("[{}] removed {} {} ({})".format(
+                scope, i[:12], label, human(img.get("Size") or 0)))
+            removed += 1
+            freed += img.get("Size") or 0
+        else:
+            # e.g. a container was created in the meantime - podman refuses,
+            # which is exactly what we want.
+            log("[{}] WARN could not remove {} {}: {}".format(
+                scope, i[:12], label, res.stderr.strip()))
+            failed += 1
+
+    log("[{}] {} {} image(s), {} (kept {}, failed {})".format(
+        scope, "would remove" if dry_run else "removed", removed,
+        human(freed), len(images) - removed - failed, failed))
+
+
+def main(argv):
+    dry_run = DRY_RUN or "--dry-run" in argv
+    errors = 0
+    for scope, refs in sorted(load_scopes().items()):
+        if scope == "root":
+            user = None
+        else:
+            try:
+                user = pwd.getpwnam(scope)
+            except KeyError:
+                continue
+            if not os.path.isdir("/run/user/{}".format(user.pw_uid)):
+                log("[{}] user manager not running - skipped".format(scope))
+                continue
+        try:
+            prune_scope(scope, user, refs, dry_run)
+        except Exception as e:  # keep other scopes going
+            log("[{}] ERROR {}".format(scope, e))
+            errors += 1
+    return 1 if errors else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

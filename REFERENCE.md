@@ -13,6 +13,7 @@
 #### Private Classes
 
 * `podman_compose::dns_sync`: Push host nameserver changes into running podman-compose containers
+* `podman_compose::image_prune`: Periodically remove old podman images of podman-compose projects
 * `podman_compose::install`: Install podman and podman-compose
 
 ### Defined types
@@ -95,6 +96,11 @@ The following parameters are available in the `podman_compose` class:
 * [`dns_sync_watch_paths`](#-podman_compose--dns_sync_watch_paths)
 * [`dns_sync_interval`](#-podman_compose--dns_sync_interval)
 * [`dns_sync_restart_aardvark`](#-podman_compose--dns_sync_restart_aardvark)
+* [`image_prune`](#-podman_compose--image_prune)
+* [`image_prune_keep`](#-podman_compose--image_prune_keep)
+* [`image_prune_on_calendar`](#-podman_compose--image_prune_on_calendar)
+* [`image_prune_randomized_delay_sec`](#-podman_compose--image_prune_randomized_delay_sec)
+* [`image_prune_dry_run`](#-podman_compose--image_prune_dry_run)
 
 ##### <a name="-podman_compose--manage_package"></a>`manage_package`
 
@@ -215,6 +221,46 @@ aardvark-dns older than 1.12 only reads its upstream servers on start.
 When true, such a process is restarted on a DNS change (brief DNS blip for
 container name resolution; containers keep running). When false, only a
 warning is logged.
+
+##### <a name="-podman_compose--image_prune"></a>`image_prune`
+
+Data type: `Boolean`
+
+Periodically remove old images from the image store of root and of every
+rootless user hosting a project or cron job (see
+podman_compose::image_prune). Images used by a container or referenced by
+a managed compose file are never removed.
+
+##### <a name="-podman_compose--image_prune_keep"></a>`image_prune_keep`
+
+Data type: `Optional[Integer[1]]`
+
+Unset (default): only orphaned images are removed (no tag left, not used
+by any container) - like `podman image prune`.
+N: per repository the N newest images (by creation time, tagged or
+untagged) are kept for a quick manual rollback; all older ones are
+removed. N includes the image currently in use, so 3 keeps the current
+and two previous versions.
+
+##### <a name="-podman_compose--image_prune_on_calendar"></a>`image_prune_on_calendar`
+
+Data type: `String[1]`
+
+Systemd OnCalendar expression for the cleanup timer.
+
+##### <a name="-podman_compose--image_prune_randomized_delay_sec"></a>`image_prune_randomized_delay_sec`
+
+Data type: `String[1]`
+
+Jitter for the cleanup timer (systemd time span), spreads the load
+across hosts. '0' disables it.
+
+##### <a name="-podman_compose--image_prune_dry_run"></a>`image_prune_dry_run`
+
+Data type: `Boolean`
+
+Only log what would be removed (`journalctl -u podman-image-prune`).
+The script can also be run manually with `--dry-run`.
 
 ## Defined types
 

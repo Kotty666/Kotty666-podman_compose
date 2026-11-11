@@ -12,6 +12,7 @@ Puppet module to install podman-compose, build compose files from Hiera data, an
 - **Image pull on start**: Optionally pull images before every (re)start
 - **Secrets support**: Sensitive `.env` values via `Sensitive[String]` (eyaml-friendly)
 - **DNS sync without restarts**: When the host's nameservers change, running containers get the new servers pushed in — no container restart (enabled by default)
+- **Image cleanup**: Optional timer that removes orphaned images or keeps only the N newest versions per repository for a quick manual rollback
 - **Clean teardown**: `ensure => absent` runs `podman-compose down` and removes all artifacts
 
 ## Requirements
@@ -237,6 +238,11 @@ Setting `ensure: absent` will:
 | `dns_sync_watch_paths` | `Array[Stdlib::Absolutepath]` | `['/etc/resolv.conf', '/run/systemd/resolve/resolv.conf']` | Files watched to trigger a sync |
 | `dns_sync_interval` | `String` | `'5min'` | Fallback timer interval |
 | `dns_sync_restart_aardvark` | `Boolean` | `true` | Restart aardvark-dns < 1.12 (cannot reload upstreams otherwise) |
+| `image_prune` | `Boolean` | `false` | Periodically remove old images (see [Image cleanup](#image-cleanup)) |
+| `image_prune_keep` | `Optional[Integer[1]]` | `undef` | Unset: only orphaned images. N: keep the N newest images per repository |
+| `image_prune_on_calendar` | `String` | `'daily'` | Systemd `OnCalendar` of the cleanup timer |
+| `image_prune_randomized_delay_sec` | `String` | `'1h'` | Timer jitter, `'0'` disables it |
+| `image_prune_dry_run` | `Boolean` | `false` | Only log what would be removed |
 
 ### Defined type: `podman_compose::project`
 
@@ -389,6 +395,39 @@ podman_compose::projects:
 # or turn the feature off globally
 podman_compose::dns_sync: false
 ```
+
+## Image cleanup
+
+Every image update leaves the previous image behind — a re-pulled `:latest`
+becomes an untagged `<none>` image, a changed tag leaves the old tag. Over
+time this fills the disk. With `image_prune: true` the module installs
+`podman-image-prune.timer`, which cleans the image store of root and of every
+rootless user hosting a project or cron job (each rootless user has its own
+store):
+
+| `image_prune_keep` | Removed |
+|---|---|
+| unset (default) | Only orphaned images: no tag left and not used by any container (like `podman image prune`) |
+| `N` | Per repository everything except the `N` newest images (by creation time, tagged or untagged). `N` includes the version currently running, so `3` keeps the current and two previous ones |
+
+Never removed: images used by any container (running or stopped) and images
+referenced by a managed compose file — the latter protects cron job images,
+which have no container between runs.
+
+```yaml
+podman_compose::image_prune: true
+podman_compose::image_prune_keep: 3
+# optional
+podman_compose::image_prune_on_calendar: 'Sun *-*-* 03:00:00'
+```
+
+Rolling out to many hosts: start with `image_prune_dry_run: true` and check
+`journalctl -u podman-image-prune.service`, or run
+`/usr/local/libexec/podman-image-prune.py --dry-run` by hand.
+
+Rolling back to a kept untagged image: `podman images --digests` lists its
+repository digest; reference it in the compose file as
+`image: "repo@sha256:…"` (or `podman tag <id> repo:rollback`).
 
 ## How it works
 

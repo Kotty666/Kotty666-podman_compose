@@ -77,6 +77,30 @@ describe 'podman_compose::cron' do
 
         it { is_expected.to compile.with_all_deps }
       end
+
+      context 'image_prune marker' do
+        let(:marker) { '/etc/podman-compose/image-prune.d/cron-backup.conf' }
+        let(:params) do
+          {
+            'rootless'    => false,
+            'on_calendar' => 'daily',
+            'compose'     => {
+              'services' => {
+                'job' => { 'image' => 'busybox:latest' },
+              },
+            },
+          }
+        end
+
+        it { is_expected.to contain_file(marker).with_ensure('absent') }
+
+        context 'enabled' do
+          let(:pre_condition) { 'class { "podman_compose": image_prune => true }' }
+
+          it { is_expected.to compile.with_all_deps }
+          it { is_expected.to contain_file(marker).with_ensure('file').with_content("root\nbusybox:latest\n") }
+        end
+      end
     end
   end
 end

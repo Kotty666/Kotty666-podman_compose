@@ -1,6 +1,6 @@
-{:	rooto:"YARD::CodeObjects::RootObject:@childrenIC:&YARD::CodeObjects::CodeObjectList[o:4OpenvoxStrings::Yard::CodeObjects::DefinedTypes;IC;[
+{:	rooto:"YARD::CodeObjects::RootObject:@childrenIC:&YARD::CodeObjects::CodeObjectList[o:4OpenvoxStrings::Yard::CodeObjects::DefinedTypes;IC;[
 o:3OpenvoxStrings::Yard::CodeObjects::DefinedType:@statemento:@OpenvoxStrings::Yard::Parsers::Puppet::DefinedTypeStatement:
-@fileI"manifests/cron.pp:ET:@sourceI"T/define podman_compose::cron (
+@fileI"manifests/cron.pp:ET:@sourceI""2define podman_compose::cron (
   Hash                                $compose,
   String[1]                           $on_calendar,
   Enum['present', 'absent']           $ensure                = 'present',
@@ -71,6 +71,24 @@ o:3OpenvoxStrings::Yard::CodeObjects::DefinedType:@statemento:@OpenvoxStrings:
   # Safe cwd for non-root execs (Puppet agent's cwd is usually /root,
   # which a non-root user can't enter ‚Üí "cannot chdir to /root: Permission denied").
   $_safe_cwd = '/tmp'
+
+  # Registers the user's image store with podman-image-prune and protects
+  # the images referenced here - between runs no container keeps them in use.
+  $_image_prune_marker = "/etc/podman-compose/image-prune.d/cron-${name}.conf"
+  if $podman_compose::image_prune and $ensure != 'absent' {
+    $_prune_images = $compose['services'].map |$_svc, $_cfg| { $_cfg['image'] }.filter |$_img| { $_img =~ String[1] }
+    file { $_image_prune_marker:
+      ensure  => file,
+      owner   => 'root',
+      group   => 'root',
+      mode    => '0644',
+      content => ([$_user] + unique($_prune_images)).map |$_line| { "${_line}\n" }.join(''),
+    }
+  } else {
+    file { $_image_prune_marker:
+      ensure => absent,
+    }
+  }
 
   # ==========================================================
   # ensure => absent
@@ -838,7 +856,7 @@ Must not overlap with any other user's range on the same host.;T;I"subgid_st
 ;"I"
 param;F;#I"GNumber of subordinate GIDs allocated to this user (default 65536).;T;I"subgid_count;T;$[@ä;@^o;!
 ;"I"api;F;#@[;0;$0;@^;%[ ;&@ª;'0;@^;F;:@b;;i ;<@;=I"/puppet_defined_types::podman_compose::user;Fo;
-;o;;I"manifests/project.pp;T;I"adefine podman_compose::project (
+;o;;I"manifests/project.pp;T;I"€cdefine podman_compose::project (
   Hash                                $compose,
   Podman_compose::Ensure              $ensure               = 'running',
   Boolean                             $rootless             = true,
@@ -979,6 +997,24 @@ param;F;#I"GNumber of subordinate GIDs allocated to this user (default 65536).
     }
   } else {
     file { $_dns_sync_marker:
+      ensure => absent,
+    }
+  }
+
+  # Registers the user's image store with podman-image-prune and protects
+  # the images referenced here: <user>, then one image per line.
+  $_image_prune_marker = "/etc/podman-compose/image-prune.d/project-${name}.conf"
+  if $podman_compose::image_prune and $ensure != 'absent' {
+    $_prune_images = $compose['services'].map |$_svc, $_cfg| { $_cfg['image'] }.filter |$_img| { $_img =~ String[1] }
+    file { $_image_prune_marker:
+      ensure  => file,
+      owner   => 'root',
+      group   => 'root',
+      mode    => '0644',
+      content => ([$_user] + unique($_prune_images)).map |$_line| { "${_line}\n" }.join(''),
+    }
+  } else {
+    file { $_image_prune_marker:
       ensure => absent,
     }
   }
@@ -2494,7 +2530,7 @@ param;F;#I"åHTTP(S) proxy environment variables set on the daemon's unit so t
   interval     => 30,
   cooldown     => 120,
 };T;I"EAutoscale the 'api' service of the 'api' project between 2 and 6;T;$0;@8o;!
-;"I"api;F;#@[;0;$0;@8;%[ ;&@ÿ;'0;@8;F;:@<;;i ;<@;=I"4puppet_defined_types::podman_compose::autoscale;F;(@;)IC;[ ;(@;*IC;[ ;(@;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[ ;3F;:puppet_defined_types;5;6;7:hidden; [ ;9{ ;IC;" ;T; [ ;%[ ;&I" ;T;'0;@;;i ;<@o:/OpenvoxStrings::Yard::CodeObjects::Classes;IC;[o:-OpenvoxStrings::Yard::CodeObjects::Class;o::OpenvoxStrings::Yard::Parsers::Puppet::ClassStatement;I"manifests/init.pp;T;I"ãclass podman_compose (
+;"I"api;F;#@[;0;$0;@8;%[ ;&@ÿ;'0;@8;F;:@<;;i ;<@;=I"4puppet_defined_types::podman_compose::autoscale;F;(@;)IC;[ ;(@;*IC;[ ;(@;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[ ;3F;:puppet_defined_types;5;6;7:hidden; [ ;9{ ;IC;" ;T; [ ;%[ ;&I" ;T;'0;@;;i ;<@o:/OpenvoxStrings::Yard::CodeObjects::Classes;IC;[	o:-OpenvoxStrings::Yard::CodeObjects::Class;o::OpenvoxStrings::Yard::Parsers::Puppet::ClassStatement;I"manifests/init.pp;T;I"œclass podman_compose (
   Boolean                         $manage_package,
   String[1]                       $podman_package,
   Podman_compose::Install_method  $compose_install_method,
@@ -2513,9 +2549,15 @@ param;F;#I"åHTTP(S) proxy environment variables set on the daemon's unit so t
   Array[Stdlib::Absolutepath, 1]  $dns_sync_watch_paths,
   String[1]                       $dns_sync_interval,
   Boolean                         $dns_sync_restart_aardvark,
+  Boolean                         $image_prune,
+  Optional[Integer[1]]            $image_prune_keep,
+  String[1]                       $image_prune_on_calendar,
+  String[1]                       $image_prune_randomized_delay_sec,
+  Boolean                         $image_prune_dry_run,
 ) {
   contain podman_compose::install
   contain podman_compose::dns_sync
+  contain podman_compose::image_prune
 
   $projects.each |String $name, Hash $config| {
     podman_compose::project { $name:
@@ -2534,8 +2576,8 @@ param;F;#I"åHTTP(S) proxy environment variables set on the daemon's unit so t
       * => $config,
     }
   }
-};T;iW;o;;F;i ;iV;[o;;I"manage_package;T;I"Boolean;To;;I"podman_package;T;I"String[1];To;;I"compose_install_method;T;I"#Podman_compose::Install_method;To;;I"compose_package;T;I"String[1];To;;I"compose_pip_package;T;I"String[1];To;;I"compose_ensure;T;I"String[1];To;;I"compose_binary;T;I"Stdlib::Absolutepath;To;;I"manage_systemd_container;T;I"Boolean;To;;I"systemd_container_package;T;I"String[1];To;;I"user_compose_dir_name;T;I"String[1];To;;I"root_compose_dir;T;I"Stdlib::Absolutepath;To;;I"projects;T;I"Hash[String[1], Hash];To;;I"cron_projects;T;I"Hash[String[1], Hash];To;;I"autoscalers;T;I"Hash[String[1], Hash];To;;I"dns_sync;T;I"Boolean;To;;I"dns_sync_watch_paths;T;I"#Array[Stdlib::Absolutepath, 1];To;;I"dns_sync_interval;T;I"String[1];To;;I"dns_sync_restart_aardvark;T;I"Boolean;T;I"podman_compose;F:@parent_class0;IC;"~Installs podman and podman-compose, then iterates over projects defined
-in Hiera to create compose files and systemd services.;T;0;0;F; [o;!
+};T;ik;o;;F;i ;ij;[o;;I"manage_package;T;I"Boolean;To;;I"podman_package;T;I"String[1];To;;I"compose_install_method;T;I"#Podman_compose::Install_method;To;;I"compose_package;T;I"String[1];To;;I"compose_pip_package;T;I"String[1];To;;I"compose_ensure;T;I"String[1];To;;I"compose_binary;T;I"Stdlib::Absolutepath;To;;I"manage_systemd_container;T;I"Boolean;To;;I"systemd_container_package;T;I"String[1];To;;I"user_compose_dir_name;T;I"String[1];To;;I"root_compose_dir;T;I"Stdlib::Absolutepath;To;;I"projects;T;I"Hash[String[1], Hash];To;;I"cron_projects;T;I"Hash[String[1], Hash];To;;I"autoscalers;T;I"Hash[String[1], Hash];To;;I"dns_sync;T;I"Boolean;To;;I"dns_sync_watch_paths;T;I"#Array[Stdlib::Absolutepath, 1];To;;I"dns_sync_interval;T;I"String[1];To;;I"dns_sync_restart_aardvark;T;I"Boolean;To;;I"image_prune;T;I"Boolean;To;;I"image_prune_keep;T;I"Optional[Integer[1]];To;;I"image_prune_on_calendar;T;I"String[1];To;;I"%image_prune_randomized_delay_sec;T;I"String[1];To;;I"image_prune_dry_run;T;I"Boolean;T;I"podman_compose;F:@parent_class0;IC;"~Installs podman and podman-compose, then iterates over projects defined
+in Hiera to create compose files and systemd services.;T;0;0;F; [o;!
 ;"I"summary;F;#I"JInstall podman and podman-compose, manage compose projects from Hiera;T;0;$0;0o;!
 ;"I"
 param;F;#I"7Whether to manage the podman package installation.;T;I"manage_package;T;$0;0o;!
@@ -2585,6 +2627,26 @@ param;F;#I"Ïaardvark-dns older than 1.12 only reads its upstream servers on s
 When true, such a process is restarted on a DNS change (brief DNS blip for
 container name resolution; containers keep running). When false, only a
 warning is logged.;T;I"dns_sync_restart_aardvark;T;$0;0o;!
+;"I"
+param;F;#I"ÌPeriodically remove old images from the image store of root and of every
+rootless user hosting a project or cron job (see
+podman_compose::image_prune). Images used by a container or referenced by
+a managed compose file are never removed.;T;I"image_prune;T;$0;0o;!
+;"I"
+param;F;#I"_Unset (default): only orphaned images are removed (no tag left, not used
+by any container) - like `podman image prune`.
+N: per repository the N newest images (by creation time, tagged or
+untagged) are kept for a quick manual rollback; all older ones are
+removed. N includes the image currently in use, so 3 keeps the current
+and two previous versions.;T;I"image_prune_keep;T;$0;0o;!
+;"I"
+param;F;#I"9Systemd OnCalendar expression for the cleanup timer.;T;I"image_prune_on_calendar;T;$0;0o;!
+;"I"
+param;F;#I"fJitter for the cleanup timer (systemd time span), spreads the load
+across hosts. '0' disables it.;T;I"%image_prune_randomized_delay_sec;T;$0;0o;!
+;"I"
+param;F;#I"Only log what would be removed (`journalctl -u podman-image-prune`).
+The script can also be run manually with `--dry-run`.;T;I"image_prune_dry_run;T;$0;0o;!
 ;"I"example;F;#I"include podman_compose;T;I"Basic usage via Hiera;T;$0;0o;!
 ;"I"example;F;#I"∫podman_compose::projects:
   myapp:
@@ -2607,7 +2669,7 @@ podman_compose::cron_projects:
       services:
         restic:
           image: "restic/restic:0.17"
-          command: ["backup", "/data"];T;I"Hiera data;T;$0;0;%[ ;&I"“@summary Install podman and podman-compose, manage compose projects from Hiera
+          command: ["backup", "/data"];T;I"Hiera data;T;$0;0;%[ ;&I"›@summary Install podman and podman-compose, manage compose projects from Hiera
 
 Installs podman and podman-compose, then iterates over projects defined
 in Hiera to create compose files and systemd services.
@@ -2660,6 +2722,26 @@ in Hiera to create compose files and systemd services.
   When true, such a process is restarted on a DNS change (brief DNS blip for
   container name resolution; containers keep running). When false, only a
   warning is logged.
+@param image_prune
+  Periodically remove old images from the image store of root and of every
+  rootless user hosting a project or cron job (see
+  podman_compose::image_prune). Images used by a container or referenced by
+  a managed compose file are never removed.
+@param image_prune_keep
+  Unset (default): only orphaned images are removed (no tag left, not used
+  by any container) - like `podman image prune`.
+  N: per repository the N newest images (by creation time, tagged or
+  untagged) are kept for a quick manual rollback; all older ones are
+  removed. N includes the image currently in use, so 3 keeps the current
+  and two previous versions.
+@param image_prune_on_calendar
+  Systemd OnCalendar expression for the cleanup timer.
+@param image_prune_randomized_delay_sec
+  Jitter for the cleanup timer (systemd time span), spreads the load
+  across hosts. '0' disables it.
+@param image_prune_dry_run
+  Only log what would be removed (`journalctl -u podman-image-prune`).
+  The script can also be run manually with `--dry-run`.
 
 @example Basic usage via Hiera
   include podman_compose
@@ -2687,8 +2769,8 @@ in Hiera to create compose files and systemd services.
           restic:
             image: "restic/restic:0.17"
             command: ["backup", "/data"]
-;T;'0;[[@v0[@y0[@|0[@0[@Ç0[@Ö0[@à0[@ã0[@é0[@ë0[@î0[@ó0[@ö0[@ù0[@†0[@£0[@¶0[@©0;IC;[ ;(@o;)IC;[ ;(@o;*IC;[ ;(@o;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@qiW;3T;:podman_compose;5;6;7;8; [ ;9{ ;IC;"~Installs podman and podman-compose, then iterates over projects defined
-in Hiera to create compose files and systemd services.;T; [o;!
+;T;'0;[[@v0[@y0[@|0[@0[@Ç0[@Ö0[@à0[@ã0[@é0[@ë0[@î0[@ó0[@ö0[@ù0[@†0[@£0[@¶0[@©0[@¨0[@Ø0[@≤0[@µ0[@∏0;IC;[ ;(@o;)IC;[ ;(@o;*IC;[ ;(@o;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@qik;3T;:podman_compose;5;6;7;8; [ ;9{ ;IC;"~Installs podman and podman-compose, then iterates over projects defined
+in Hiera to create compose files and systemd services.;T; [ o;!
 ;"I"summary;F;#I"JInstall podman and podman-compose, manage compose projects from Hiera;T;0;$0;@oo;!
 ;"I"
 param;F;#I"7Whether to manage the podman package installation.;T;I"manage_package;T;$[@w;@oo;!
@@ -2738,6 +2820,26 @@ param;F;#I"Ïaardvark-dns older than 1.12 only reads its upstream servers on s
 When true, such a process is restarted on a DNS change (brief DNS blip for
 container name resolution; containers keep running). When false, only a
 warning is logged.;T;I"dns_sync_restart_aardvark;T;$[@™;@oo;!
+;"I"
+param;F;#I"ÌPeriodically remove old images from the image store of root and of every
+rootless user hosting a project or cron job (see
+podman_compose::image_prune). Images used by a container or referenced by
+a managed compose file are never removed.;T;I"image_prune;T;$[@≠;@oo;!
+;"I"
+param;F;#I"_Unset (default): only orphaned images are removed (no tag left, not used
+by any container) - like `podman image prune`.
+N: per repository the N newest images (by creation time, tagged or
+untagged) are kept for a quick manual rollback; all older ones are
+removed. N includes the image currently in use, so 3 keeps the current
+and two previous versions.;T;I"image_prune_keep;T;$[@∞;@oo;!
+;"I"
+param;F;#I"9Systemd OnCalendar expression for the cleanup timer.;T;I"image_prune_on_calendar;T;$[@≥;@oo;!
+;"I"
+param;F;#I"fJitter for the cleanup timer (systemd time span), spreads the load
+across hosts. '0' disables it.;T;I"%image_prune_randomized_delay_sec;T;$[@∂;@oo;!
+;"I"
+param;F;#I"Only log what would be removed (`journalctl -u podman-image-prune`).
+The script can also be run manually with `--dry-run`.;T;I"image_prune_dry_run;T;$[@π;@oo;!
 ;"I"example;F;#I"include podman_compose;T;I"Basic usage via Hiera;T;$0;@oo;!
 ;"I"example;F;#I"∫podman_compose::projects:
   myapp:
@@ -2761,7 +2863,7 @@ podman_compose::cron_projects:
         restic:
           image: "restic/restic:0.17"
           command: ["backup", "/data"];T;I"Hiera data;T;$0;@oo;!
-;"I"api;F;#@[;0;$0;@o;%[ ;&@;'0;@o;F;:@s;;i ;<@m;=I"#puppet_classes::podman_compose;Fo;E;o;F;I"manifests/install.pp;T;I"0class podman_compose::install {
+;"I"api;F;#@[;0;$0;@o;%[ ;&@%;'0;@o;F;:@s;;i ;<@m;=I"#puppet_classes::podman_compose;Fo;E;o;F;I"manifests/install.pp;T;I"0class podman_compose::install {
   assert_private()
 
   if $podman_compose::manage_package {
@@ -2815,10 +2917,10 @@ podman_compose::cron_projects:
 ;"I"api;F;#I"private;T;0;$0;0;%[ ;&I">@summary Install podman and podman-compose
 
 @api private
-;T;'0;[ ;IC;[ ;(@ç;)IC;[ ;(@ç;*IC;[ ;(@ç;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@èi
+;T;'0;[ ;IC;[ ;(@Œ;)IC;[ ;(@Œ;*IC;[ ;(@Œ;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@–i
 ;3T;:podman_compose::install;5;6;7;8; [ ;9{ ;IC;" ;T; [o;!
-;"I"summary;F;#I"&Install podman and podman-compose;T;0;$0;@ço;!
-;"I"api;F;#I"private;T;0;$0;@ç;%[ ;&@ù;'0;@ç;F;:@ë;;i ;<@m;=I",puppet_classes::podman_compose::install;Fo;E;o;F;I"manifests/dns_sync.pp;T;I"^class podman_compose::dns_sync {
+;"I"summary;F;#I"&Install podman and podman-compose;T;0;$0;@Œo;!
+;"I"api;F;#I"private;T;0;$0;@Œ;%[ ;&@ﬁ;'0;@Œ;F;:@“;;i ;<@m;=I",puppet_classes::podman_compose::install;Fo;E;o;F;I"manifests/dns_sync.pp;T;I"^class podman_compose::dns_sync {
   assert_private()
 
   $_ensure      = $podman_compose::dns_sync
@@ -2965,7 +3067,7 @@ Nameservers not inherited from the host (explicit `dns:` in compose,
 network gateways, pasta/slirp4netns forwarders) are never changed.
 
 @api private
-;T;'0;[ ;IC;[ ;(@µ;)IC;[ ;(@µ;*IC;[ ;(@µ;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@∑i;3T;:podman_compose::dns_sync;5;6;7;8; [ ;9{ ;IC;"In environments where DNS servers change (re-deployed resolvers with new
+;T;'0;[ ;IC;[ ;(@ˆ;)IC;[ ;(@ˆ;*IC;[ ;(@ˆ;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@¯i;3T;:podman_compose::dns_sync;5;6;7;8; [ ;9{ ;IC;"In environments where DNS servers change (re-deployed resolvers with new
 IPs), long-running containers keep the nameservers they saw at creation
 time and eventually lose DNS. This class installs a small oneshot service
 that is triggered by a systemd path unit whenever the host resolv.conf
@@ -2982,17 +3084,150 @@ the projects that opted in - without restarting them:
 
 Nameservers not inherited from the host (explicit `dns:` in compose,
 network gateways, pasta/slirp4netns forwarders) are never changed.;T; [o;!
-;"I"summary;F;#I"HPush host nameserver changes into running podman-compose containers;T;0;$0;@µo;!
-;"I"api;F;#I"private;T;0;$0;@µ;%[ ;&@≈;'0;@µ;F;:@π;;i ;<@m;=I"-puppet_classes::podman_compose::dns_sync;F;(@m;)IC;[ ;(@m;*IC;[ ;(@m;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[ ;3F;:puppet_classes;5;6;7;C; [ ;9{ ;IC;" ;T; [ ;%[ ;&@l;'0;@m;;i ;<@o:7OpenvoxStrings::Yard::CodeObjects::DataTypeAliases;IC;[	o:5OpenvoxStrings::Yard::CodeObjects::DataTypeAlias;o:BOpenvoxStrings::Yard::Parsers::Puppet::DataTypeAliasStatement;I"types/ensure.pp;T;I"APodman_compose::Ensure = Enum['running', 'stopped', 'absent';T;i;o;;F;i ;i:@alias_ofI")Enum['running', 'stopped', 'absent'];T;I"Podman_compose::Ensure;T;IC;" ;T;0;0;F; [o;!
-;"I"summary;F;#I".Ensure state for a podman-compose project;T;0;$0;0;%[ ;&I"7@summary Ensure state for a podman-compose project;T;'0;O@Ò;IC;[ ;(@Ï;)IC;[ ;(@Ï;*IC;[ ;(@Ï;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@Ói;3T;:Podman_compose::Ensure;5;6;7;8; [ ;9{ ;IC;" ;T; [o;!
-;"I"summary;F;#I".Ensure state for a podman-compose project;T;0;$0;@Ïo;!
-;"I"api;F;#@[;0;$0;@Ï;%[ ;&@˘;'0;@Ï;F;:@;;i ;<@Í;=I"5puppet_data_type_aliases::Podman_compose::Ensure;Fo;M;o;N;I"types/registries.pp;T;I"ﬁPodman_compose::Registries = Hash[
+;"I"summary;F;#I"HPush host nameserver changes into running podman-compose containers;T;0;$0;@ˆo;!
+;"I"api;F;#I"private;T;0;$0;@ˆ;%[ ;&@;'0;@ˆ;F;:@˙;;i ;<@m;=I"-puppet_classes::podman_compose::dns_sync;Fo;E;o;F;I"manifests/image_prune.pp;T;I"V
+class podman_compose::image_prune {
+  assert_private()
+
+  $_ensure      = $podman_compose::image_prune
+  $_conf_dir    = '/etc/podman-compose/image-prune.d'
+  $_script_path = '/usr/local/libexec/podman-image-prune.py'
+  $_unit_dir    = '/etc/systemd/system'
+
+  $_file_ensure = $_ensure ? { true => 'file', default => 'absent' }
+
+  # Marker files are written by podman_compose::project and ::cron; purge
+  # removes those of projects that were dropped from Hiera.
+  ensure_resource('file', ['/etc/podman-compose', '/usr/local/libexec'], {
+    ensure => directory,
+  })
+
+  file { $_conf_dir:
+    ensure  => directory,
+    owner   => 'root',
+    group   => 'root',
+    mode    => '0755',
+    recurse => true,
+    purge   => true,
+  }
+
+  file { $_script_path:
+    ensure  => $_file_ensure,
+    owner   => 'root',
+    group   => 'root',
+    mode    => '0755',
+    content => epp('podman_compose/image_prune.py.epp', {
+      'conf_dir' => $_conf_dir,
+      'keep'     => $podman_compose::image_prune_keep,
+      'dry_run'  => $podman_compose::image_prune_dry_run,
+    }),
+  }
+
+  file { "${_unit_dir}/podman-image-prune.service":
+    ensure  => $_file_ensure,
+    owner   => 'root',
+    group   => 'root',
+    mode    => '0644',
+    content => epp('podman_compose/systemd_image_prune_unit.epp', {
+      'script_path' => $_script_path,
+    }),
+    notify  => Exec['podman-image-prune-daemon-reload'],
+  }
+
+  file { "${_unit_dir}/podman-image-prune.timer":
+    ensure  => $_file_ensure,
+    owner   => 'root',
+    group   => 'root',
+    mode    => '0644',
+    content => epp('podman_compose/systemd_image_prune_timer.epp', {
+      'on_calendar'          => $podman_compose::image_prune_on_calendar,
+      'randomized_delay_sec' => $podman_compose::image_prune_randomized_delay_sec,
+    }),
+    notify  => Exec['podman-image-prune-daemon-reload'],
+  }
+
+  exec { 'podman-image-prune-daemon-reload':
+    command     => '/usr/bin/systemctl daemon-reload',
+    refreshonly => true,
+  }
+
+  if $_ensure {
+    service { 'podman-image-prune.timer':
+      ensure    => running,
+      enable    => true,
+      require   => [
+        File[$_script_path],
+        File["${_unit_dir}/podman-image-prune.service"],
+        Exec['podman-image-prune-daemon-reload'],
+      ],
+      subscribe => File["${_unit_dir}/podman-image-prune.timer"],
+    }
+  } else {
+    # Stop before the unit files disappear, so systemd still knows them.
+    service { 'podman-image-prune.timer':
+      ensure => stopped,
+      enable => false,
+      before => [
+        File["${_unit_dir}/podman-image-prune.timer"],
+        File["${_unit_dir}/podman-image-prune.service"],
+      ],
+    }
+  }
+};T;i;o;;F;i ;i;[ ;I" podman_compose::image_prune;F;G0;IC;"≈Installs a oneshot service plus timer that cleans up the image store of
+root and of every rootless user hosting a podman-compose project or cron
+job (each rootless user has its own store). Which stores are cleaned and
+which images are referenced by managed compose files is taken from marker
+files written by podman_compose::project and podman_compose::cron.
+
+* `image_prune_keep` unset: only orphaned images (no tag, not used by a
+  container) are removed - the equivalent of `podman image prune`.
+* `image_prune_keep` = N: per repository the N newest images are kept as
+  rollback candidates, all older ones are removed.
+
+Images used by a container or referenced by a managed compose file are
+never removed.;T;0;0;F; [o;!
+;"I"summary;F;#I"EPeriodically remove old podman images of podman-compose projects;T;0;$0;0o;!
+;"I"api;F;#I"private;T;0;$0;0;%[ ;&I"@summary Periodically remove old podman images of podman-compose projects
+
+Installs a oneshot service plus timer that cleans up the image store of
+root and of every rootless user hosting a podman-compose project or cron
+job (each rootless user has its own store). Which stores are cleaned and
+which images are referenced by managed compose files is taken from marker
+files written by podman_compose::project and podman_compose::cron.
+
+* `image_prune_keep` unset: only orphaned images (no tag, not used by a
+  container) are removed - the equivalent of `podman image prune`.
+* `image_prune_keep` = N: per repository the N newest images are kept as
+  rollback candidates, all older ones are removed.
+
+Images used by a container or referenced by a managed compose file are
+never removed.
+
+@api private
+;T;'0;[ ;IC;[ ;(@;)IC;[ ;(@;*IC;[ ;(@;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@ i;3T;: podman_compose::image_prune;5;6;7;8; [ ;9{ ;IC;"≈Installs a oneshot service plus timer that cleans up the image store of
+root and of every rootless user hosting a podman-compose project or cron
+job (each rootless user has its own store). Which stores are cleaned and
+which images are referenced by managed compose files is taken from marker
+files written by podman_compose::project and podman_compose::cron.
+
+* `image_prune_keep` unset: only orphaned images (no tag, not used by a
+  container) are removed - the equivalent of `podman image prune`.
+* `image_prune_keep` = N: per repository the N newest images are kept as
+  rollback candidates, all older ones are removed.
+
+Images used by a container or referenced by a managed compose file are
+never removed.;T; [o;!
+;"I"summary;F;#I"EPeriodically remove old podman images of podman-compose projects;T;0;$0;@o;!
+;"I"api;F;#I"private;T;0;$0;@;%[ ;&@.;'0;@;F;:@";;i ;<@m;=I"0puppet_classes::podman_compose::image_prune;F;(@m;)IC;[ ;(@m;*IC;[ ;(@m;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[ ;3F;:puppet_classes;5;6;7;C; [ ;9{ ;IC;" ;T; [ ;%[ ;&@l;'0;@m;;i ;<@o:7OpenvoxStrings::Yard::CodeObjects::DataTypeAliases;IC;[	o:5OpenvoxStrings::Yard::CodeObjects::DataTypeAlias;o:BOpenvoxStrings::Yard::Parsers::Puppet::DataTypeAliasStatement;I"types/ensure.pp;T;I"APodman_compose::Ensure = Enum['running', 'stopped', 'absent';T;i;o;;F;i ;i:@alias_ofI")Enum['running', 'stopped', 'absent'];T;I"Podman_compose::Ensure;T;IC;" ;T;0;0;F; [o;!
+;"I"summary;F;#I".Ensure state for a podman-compose project;T;0;$0;0;%[ ;&I"7@summary Ensure state for a podman-compose project;T;'0;P@Z;IC;[ ;(@U;)IC;[ ;(@U;*IC;[ ;(@U;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@Wi;3T;:Podman_compose::Ensure;5;6;7;8; [ ;9{ ;IC;" ;T; [o;!
+;"I"summary;F;#I".Ensure state for a podman-compose project;T;0;$0;@Uo;!
+;"I"api;F;#@[;0;$0;@U;%[ ;&@b;'0;@U;F;:@Y;;i ;<@S;=I"5puppet_data_type_aliases::Podman_compose::Ensure;Fo;N;o;O;I"types/registries.pp;T;I"ﬁPodman_compose::Registries = Hash[
   String[1],
   Struct[{
     username           => String[1],
     password           => Variant[Sensitive[String[1]], String[1]],
     Optional[proxy]    => Hash[String[1], String[1]],
-  }];T;i;o;;F;i ;i;OI"ΩHash[String[1], Struct[{
+  }];T;i;o;;F;i ;i;PI"ΩHash[String[1], Struct[{
     username           => String[1],
     password           => Variant[Sensitive[String[1]], String[1]],
     Optional[proxy]    => Hash[String[1], String[1]],
@@ -3027,7 +3262,7 @@ value to `Sensitive` before handing it to `podman_compose::registry`.
 
 The optional `proxy` hash is passed through to `podman_compose::registry`'s
 `proxy_env` so the login can reach a registry that is only accessible through
-a forward proxy.;T;'0;O@;IC;[ ;(@;)IC;[ ;(@;*IC;[ ;(@;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@i;3T;:Podman_compose::Registries;5;6;7;8; [ ;9{ ;IC;"The password may be supplied either as a `Sensitive[String]` (preferred) or
+a forward proxy.;T;'0;P@};IC;[ ;(@x;)IC;[ ;(@x;*IC;[ ;(@x;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@zi;3T;:Podman_compose::Registries;5;6;7;8; [ ;9{ ;IC;"The password may be supplied either as a `Sensitive[String]` (preferred) or
 as a plain `String`. The latter is accepted because hiera-eyaml decrypts
 `ENC[...]` blocks into ordinary strings unless a `lookup_options`
 `convert_to: 'Sensitive'` is configured. project.pp / cron.pp normalize the
@@ -3036,16 +3271,16 @@ value to `Sensitive` before handing it to `podman_compose::registry`.
 The optional `proxy` hash is passed through to `podman_compose::registry`'s
 `proxy_env` so the login can reach a registry that is only accessible through
 a forward proxy.;T; [o;!
-;"I"summary;F;#I"(Registry credentials hash structure;T;0;$0;@o;!
+;"I"summary;F;#I"(Registry credentials hash structure;T;0;$0;@xo;!
 ;"I"example;F;#I" {
   'registry.example.com' => { 'username' => 'deploy', 'password' => Sensitive('secret') },
   'ghcr.io'              => { 'username' => 'bot',    'password' => 'token',
                               'proxy' => { 'HTTPS_PROXY' => 'http://proxy:3128' } },
-};T;I" ;T;$0;@o;!
-;"I"api;F;#@[;0;$0;@;%[ ;&@ ;'0;@;F;:@;;i ;<@Í;=I"9puppet_data_type_aliases::Podman_compose::Registries;Fo;M;o;N;I"types/install_method.pp;T;I";Podman_compose::Install_method = Enum['package', 'pip';T;i;o;;F;i ;i;OI"Enum['package', 'pip'];T;I"#Podman_compose::Install_method;T;IC;" ;T;0;0;F; [o;!
-;"I"summary;F;#I"&Install method for podman-compose;T;0;$0;0;%[ ;&I"/@summary Install method for podman-compose;T;'0;O@?;IC;[ ;(@:;)IC;[ ;(@:;*IC;[ ;(@:;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@<i;3T;:#Podman_compose::Install_method;5;6;7;8; [ ;9{ ;IC;" ;T; [o;!
-;"I"summary;F;#I"&Install method for podman-compose;T;0;$0;@:o;!
-;"I"api;F;#@[;0;$0;@:;%[ ;&@G;'0;@:;F;:@>;;i ;<@Í;=I"=puppet_data_type_aliases::Podman_compose::Install_method;Fo;M;o;N;I"types/recreate_strategy.pp;T;I"TPodman_compose::Recreate_strategy = Enum['rolling', 'force-recreate', 'down-up';T;i;o;;F;i ;i;OI"1Enum['rolling', 'force-recreate', 'down-up'];T;I"&Podman_compose::Recreate_strategy;T;IC;"`* `rolling`        - `up -d --remove-orphans`. Least disruptive; relies on
+};T;I" ;T;$0;@xo;!
+;"I"api;F;#@[;0;$0;@x;%[ ;&@â;'0;@x;F;:@|;;i ;<@S;=I"9puppet_data_type_aliases::Podman_compose::Registries;Fo;N;o;O;I"types/install_method.pp;T;I";Podman_compose::Install_method = Enum['package', 'pip';T;i;o;;F;i ;i;PI"Enum['package', 'pip'];T;I"#Podman_compose::Install_method;T;IC;" ;T;0;0;F; [o;!
+;"I"summary;F;#I"&Install method for podman-compose;T;0;$0;0;%[ ;&I"/@summary Install method for podman-compose;T;'0;P@®;IC;[ ;(@£;)IC;[ ;(@£;*IC;[ ;(@£;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@•i;3T;:#Podman_compose::Install_method;5;6;7;8; [ ;9{ ;IC;" ;T; [o;!
+;"I"summary;F;#I"&Install method for podman-compose;T;0;$0;@£o;!
+;"I"api;F;#@[;0;$0;@£;%[ ;&@∞;'0;@£;F;:@ß;;i ;<@S;=I"=puppet_data_type_aliases::Podman_compose::Install_method;Fo;N;o;O;I"types/recreate_strategy.pp;T;I"TPodman_compose::Recreate_strategy = Enum['rolling', 'force-recreate', 'down-up';T;i;o;;F;i ;i;PI"1Enum['rolling', 'force-recreate', 'down-up'];T;I"&Podman_compose::Recreate_strategy;T;IC;"`* `rolling`        - `up -d --remove-orphans`. Least disruptive; relies on
                      podman-compose's own change detection. May NOT pick up
                      `.env` content changes delivered via `env_file:` and
                      will NOT re-create existing networks.
@@ -3072,7 +3307,7 @@ or .env changes.;T;0;$0;0;%[ ;&I"æ@summary How a project's containers are 
 * `down-up`        - `down` then `up -d --remove-orphans`. Tears the project
                      down (including its networks) and brings it back up, so
                      network topology changes are applied too. Causes a brief
-                     downtime of the whole project.;T;'0;O@b;IC;[ ;(@];)IC;[ ;(@];*IC;[ ;(@];+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@_i;3T;:&Podman_compose::Recreate_strategy;5;6;7;8; [ ;9{ ;IC;"`* `rolling`        - `up -d --remove-orphans`. Least disruptive; relies on
+                     downtime of the whole project.;T;'0;P@À;IC;[ ;(@∆;)IC;[ ;(@∆;*IC;[ ;(@∆;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[[@»i;3T;:&Podman_compose::Recreate_strategy;5;6;7;8; [ ;9{ ;IC;"`* `rolling`        - `up -d --remove-orphans`. Least disruptive; relies on
                      podman-compose's own change detection. May NOT pick up
                      `.env` content changes delivered via `env_file:` and
                      will NOT re-create existing networks.
@@ -3085,6 +3320,6 @@ or .env changes.;T;0;$0;0;%[ ;&I"æ@summary How a project's containers are 
                      network topology changes are applied too. Causes a brief
                      downtime of the whole project.;T; [o;!
 ;"I"summary;F;#I"VHow a project's containers are (re)created when the compose file
-or .env changes.;T;0;$0;@]o;!
-;"I"api;F;#@[;0;$0;@];%[ ;&@j;'0;@];F;:@a;;i ;<@Í;=I"@puppet_data_type_aliases::Podman_compose::Recreate_strategy;F;(@Í;)IC;[ ;(@Í;*IC;[ ;(@Í;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[ ;3F;:puppet_data_type_aliases;5;6;7;C; [ ;9{ ;IC;" ;T; [ ;%[ ;&@l;'0;@Í;;i ;<@;(@;)IC;[ ;(@;*IC;[ ;(@;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[ ;3F;; ;5;6;7;8; [ ;9{ ;IC;" ;T; [ ;%[ ;&@l;'0;@;<0;=@l;B@:/puppet_defined_types::podman_compose::cron@
-;K@m:#puppet_classes::podman_compose@o:/puppet_defined_types::podman_compose::user@^:,puppet_classes::podman_compose::install@ç:2puppet_defined_types::podman_compose::project@:-puppet_classes::podman_compose::dns_sync@µ:3puppet_defined_types::podman_compose::registry@•:4puppet_defined_types::podman_compose::autoscale@8;T@Í:5puppet_data_type_aliases::Podman_compose::Ensure@Ï:9puppet_data_type_aliases::Podman_compose::Registries@:=puppet_data_type_aliases::Podman_compose::Install_method@::@puppet_data_type_aliases::Podman_compose::Recreate_strategy@]
+or .env changes.;T;0;$0;@∆o;!
+;"I"api;F;#@[;0;$0;@∆;%[ ;&@”;'0;@∆;F;:@ ;;i ;<@S;=I"@puppet_data_type_aliases::Podman_compose::Recreate_strategy;F;(@S;)IC;[ ;(@S;*IC;[ ;(@S;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[ ;3F;:puppet_data_type_aliases;5;6;7;C; [ ;9{ ;IC;" ;T; [ ;%[ ;&@l;'0;@S;;i ;<@;(@;)IC;[ ;(@;*IC;[ ;(@;+IC;,{;-IC;,{ ;.T;/IC;,{ ;.T;.T;0{ ;1[ ;2[ ;3F;; ;5;6;7;8; [ ;9{ ;IC;" ;T; [ ;%[ ;&@l;'0;@;<0;=@l;B@:/puppet_defined_types::podman_compose::cron@
+;L@m:#puppet_classes::podman_compose@o:/puppet_defined_types::podman_compose::user@^:,puppet_classes::podman_compose::install@Œ:2puppet_defined_types::podman_compose::project@:-puppet_classes::podman_compose::dns_sync@ˆ:3puppet_defined_types::podman_compose::registry@•:4puppet_defined_types::podman_compose::autoscale@8:0puppet_classes::podman_compose::image_prune@;U@S:5puppet_data_type_aliases::Podman_compose::Ensure@U:9puppet_data_type_aliases::Podman_compose::Registries@x:=puppet_data_type_aliases::Podman_compose::Install_method@£:@puppet_data_type_aliases::Podman_compose::Recreate_strategy@∆

@@ -1,0 +1,14 @@
+<%- |
+  Stdlib::Absolutepath $script_path,
+| -%>
+# Managed by Puppet - DO NOT EDIT
+# Removes old podman images of all podman-compose image stores.
+
+[Unit]
+Description=Remove old podman images of podman-compose projects
+
+[Service]
+Type=oneshot
+Nice=10
+IOSchedulingClass=idle
+ExecStart=/usr/bin/python3 <%= $script_path %>
